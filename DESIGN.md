@@ -91,20 +91,7 @@ The game uses the HTML5 Canvas API for all rendering, implemented in vanilla Typ
 
 ##### 1. GameRenderer (Main Class)
 
-```typescript
-class GameRenderer {
-  private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
-  private layers: RenderLayer[];
-  
-  constructor(canvas: HTMLCanvasElement) { }
-  
-  public render(state: GameState): void { }
-  public resize(width: number, height: number): void { }
-  private clear(): void { }
-  private renderLayers(): void { }
-}
-```
+Responsible for managing the canvas context, coordinating render layers, and handling resize events.
 
 ##### 2. Render Layers
 
@@ -120,25 +107,7 @@ Each layer is responsible for rendering a specific aspect of the game:
 
 ##### 3. Animation System
 
-```typescript
-interface Animation {
-  type: 'clone' | 'jump' | 'convert' | 'ripple';
-  startTime: number;
-  duration: number;
-  from: Position;
-  to?: Position;
-  progress: number;
-}
-
-class AnimationManager {
-  private animations: Animation[];
-  
-  public add(animation: Animation): void { }
-  public update(currentTime: number): void { }
-  public render(ctx: CanvasRenderingContext2D): void { }
-  public isAnimating(): boolean { }
-}
-```
+Manages animations for clone moves, jump moves, piece conversions, and touch feedback ripples.
 
 #### Rendering Pipeline
 
@@ -166,215 +135,40 @@ Redux manages all game state, providing predictable state updates. The architect
 
 #### State Shape
 
-```typescript
-interface RootState {
-  game: GameState;
-  ui: UIState;
-  settings: SettingsState;
-}
+The state is organized into three main slices:
 
-interface GameState {
-  board: Board;
-  currentPlayer: Player;
-  selectedPiece: Position | null;
-  validMoves: Move[];
-  moveHistory: Move[];
-  gameStatus: 'playing' | 'finished' | 'paused';
-  winner: Player | 'draw' | null;
-  scores: {
-    [Player.Red]: number;
-    [Player.Blue]: number;
-  };
-}
+- **game**: Board state, current player, selected piece, valid moves, game status, winner, and scores
+- **ui**: Animation state, move hints visibility, touch feedback position, menu state
+- **settings**: Sound preferences, animation speed, theme selection, board size
 
-interface Board {
-  cells: Cell[][];
-  size: number;
-}
+#### Actions
 
-interface Cell {
-  type: 'empty' | 'blocked' | 'piece';
-  owner?: Player;
-}
+The following action types are supported:
 
-enum Player {
-  Red = 'red',
-  Blue = 'blue'
-}
+**Game Actions:**
+- SELECT_PIECE: Select a piece to move
+- DESELECT_PIECE: Cancel piece selection
+- MAKE_MOVE: Execute a move from one position to another
+- NEW_GAME: Start a new game
+- UNDO_MOVE: Undo the last move
+- REDO_MOVE: Redo a previously undone move
 
-interface Position {
-  row: number;
-  col: number;
-}
+**UI Actions:**
+- SET_ANIMATING: Toggle animation state
+- SET_TOUCH_FEEDBACK: Set touch feedback position
+- TOGGLE_MENU: Toggle menu visibility
 
-interface Move {
-  type: 'clone' | 'jump';
-  from: Position;
-  to: Position;
-  player: Player;
-  conversions: Position[];
-  timestamp: number;
-}
-
-interface UIState {
-  isAnimating: boolean;
-  showMoveHints: boolean;
-  touchFeedback: Position | null;
-  menuOpen: boolean;
-}
-
-interface SettingsState {
-  soundEnabled: boolean;
-  animationSpeed: 'slow' | 'normal' | 'fast';
-  theme: 'classic' | 'modern' | 'high-contrast';
-  boardSize: 7 | 9 | 11;
-}
-```
-
-### Actions
-
-```typescript
-// Game Actions
-const SELECT_PIECE = 'game/SELECT_PIECE';
-const DESELECT_PIECE = 'game/DESELECT_PIECE';
-const MAKE_MOVE = 'game/MAKE_MOVE';
-const NEW_GAME = 'game/NEW_GAME';
-const UNDO_MOVE = 'game/UNDO_MOVE';
-const REDO_MOVE = 'game/REDO_MOVE';
-
-// UI Actions
-const SET_ANIMATING = 'ui/SET_ANIMATING';
-const SET_TOUCH_FEEDBACK = 'ui/SET_TOUCH_FEEDBACK';
-const TOGGLE_MENU = 'ui/TOGGLE_MENU';
-
-// Settings Actions
-const UPDATE_SETTINGS = 'settings/UPDATE_SETTINGS';
-```
-
-### Action Creators
-
-```typescript
-// Game action creators
-const selectPiece = (position: Position) => ({
-  type: SELECT_PIECE,
-  payload: position
-});
-
-const makeMove = (from: Position, to: Position) => ({
-  type: MAKE_MOVE,
-  payload: { from, to }
-});
-
-const newGame = (boardSize?: number) => ({
-  type: NEW_GAME,
-  payload: { boardSize }
-});
-
-// UI action creators
-const setAnimating = (isAnimating: boolean) => ({
-  type: SET_ANIMATING,
-  payload: isAnimating
-});
-
-const setTouchFeedback = (position: Position | null) => ({
-  type: SET_TOUCH_FEEDBACK,
-  payload: position
-});
-```
-
-### Reducers
-
-```typescript
-// Game Reducer
-function gameReducer(state: GameState, action: Action): GameState {
-  switch (action.type) {
-    case SELECT_PIECE:
-      return handleSelectPiece(state, action.payload);
-    case MAKE_MOVE:
-      return handleMakeMove(state, action.payload);
-    case NEW_GAME:
-      return createInitialGameState(action.payload.boardSize);
-    case UNDO_MOVE:
-      return handleUndo(state);
-    default:
-      return state;
-  }
-}
-
-// Root Reducer
-const rootReducer = combineReducers({
-  game: gameReducer,
-  ui: uiReducer,
-  settings: settingsReducer
-});
-```
+**Settings Actions:**
+- UPDATE_SETTINGS: Update game settings
 
 ### Middleware
 
-```typescript
-// Logging Middleware (Development)
-const loggerMiddleware = (store) => (next) => (action) => {
-  console.log('Dispatching:', action);
-  const result = next(action);
-  console.log('Next State:', store.getState());
-  return result;
-};
-
-// Animation Middleware
-const animationMiddleware = (store) => (next) => (action) => {
-  if (action.type === MAKE_MOVE) {
-    store.dispatch(setAnimating(true));
-  }
-  return next(action);
-};
-```
-
-### Store Configuration
-
-```typescript
-import { createStore, applyMiddleware, compose } from 'redux';
-
-const store = createStore(
-  rootReducer,
-  preloadedState,
-  compose(
-    applyMiddleware(
-      loggerMiddleware,
-      animationMiddleware
-    )
-  )
-);
-```
+- **Logger Middleware**: Development-only logging for debugging
+- **Animation Middleware**: Coordinates animations when moves are made
 
 ### Redux Integration with Canvas Rendering
 
-```typescript
-class Game {
-  private store: Store<RootState>;
-  private renderer: GameRenderer;
-  private previousState: RootState | null = null;
-  
-  constructor(canvas: HTMLCanvasElement) {
-    this.store = createStore(rootReducer);
-    this.renderer = new GameRenderer(canvas);
-    
-    // Subscribe to state changes
-    this.store.subscribe(() => {
-      const currentState = this.store.getState();
-      if (this.shouldRender(currentState)) {
-        this.renderer.render(currentState.game);
-      }
-      this.previousState = currentState;
-    });
-  }
-  
-  private shouldRender(state: RootState): boolean {
-    if (!this.previousState) return true;
-    return state.game !== this.previousState.game ||
-           state.ui !== this.previousState.ui;
-  }
-}
-```
+The Game class subscribes to Redux store changes and triggers re-renders when game or UI state changes.
 
 ---
 
@@ -404,132 +198,21 @@ class Game {
 
 ### File Structure
 
-```
-src/
-├── index.ts                 # Application entry point
-├── types/
-│   ├── index.ts            # Type exports
-│   ├── game.ts             # Game-related types
-│   ├── ui.ts               # UI-related types
-│   └── settings.ts         # Settings types
-├── store/
-│   ├── index.ts            # Store configuration
-│   ├── rootReducer.ts      # Combined reducer
-│   ├── actions/
-│   │   ├── gameActions.ts  # Game action creators
-│   │   ├── uiActions.ts    # UI action creators
-│   │   └── settingsActions.ts
-│   ├── reducers/
-│   │   ├── gameReducer.ts  # Game state reducer
-│   │   ├── uiReducer.ts    # UI state reducer
-│   │   └── settingsReducer.ts
-│   └── middleware/
-│       ├── logger.ts       # Development logging
-│       └── animation.ts    # Animation coordination
-├── game/
-│   ├── Game.ts             # Main game controller
-│   ├── Board.ts            # Board logic
-│   ├── MoveValidator.ts    # Move validation
-│   └── WinChecker.ts       # Win condition checking
-├── renderer/
-│   ├── GameRenderer.ts     # Main renderer
-│   ├── layers/
-│   │   ├── BackgroundLayer.ts
-│   │   ├── GridLayer.ts
-│   │   ├── PieceLayer.ts
-│   │   ├── HighlightLayer.ts
-│   │   └── UILayer.ts
-│   ├── AnimationManager.ts # Animation handling
-│   └── themes/
-│       ├── classic.ts      # Classic theme colors
-│       ├── modern.ts       # Modern theme colors
-│       └── high-contrast.ts
-├── input/
-│   ├── InputHandler.ts     # Touch/click event handling
-│   └── HitTest.ts          # Canvas coordinate mapping
-└── utils/
-    ├── geometry.ts         # Position calculations
-    ├── colors.ts           # Color utilities
-    └── audio.ts            # Sound effects (optional)
-```
+The source code is organized into the following directories:
+
+- **src/**: Application entry point and main types
+- **src/store/**: Redux store configuration, actions, reducers, and middleware
+- **src/game/**: Game logic including board management, move validation, and win checking
+- **src/renderer/**: Canvas rendering, layers, animation manager, and themes
+- **src/input/**: Touch/click event handling and hit testing
 
 ### Input Handling
 
-```typescript
-class InputHandler {
-  private canvas: HTMLCanvasElement;
-  private store: Store<RootState>;
-  
-  constructor(canvas: HTMLCanvasElement, store: Store<RootState>) {
-    this.canvas = canvas;
-    this.store = store;
-    this.setupEventListeners();
-  }
-  
-  private setupEventListeners(): void {
-    // Touch events for mobile/tablet
-    this.canvas.addEventListener('touchstart', this.handleTouch.bind(this));
-    this.canvas.addEventListener('touchend', this.handleTouchEnd.bind(this));
-    
-    // Click events for mouse input
-    this.canvas.addEventListener('click', this.handleClick.bind(this));
-    
-    // Prevent context menu on long press
-    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-  }
-  
-  private handleTouch(event: TouchEvent): void {
-    event.preventDefault();
-    const touch = event.touches[0];
-    const position = this.getCanvasPosition(touch.clientX, touch.clientY);
-    this.processInput(position);
-  }
-  
-  private handleClick(event: MouseEvent): void {
-    const position = this.getCanvasPosition(event.clientX, event.clientY);
-    this.processInput(position);
-  }
-  
-  private getCanvasPosition(clientX: number, clientY: number): Position {
-    const rect = this.canvas.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-    return this.pixelToBoardPosition(x, y);
-  }
-  
-  private processInput(position: Position): void {
-    const state = this.store.getState();
-    
-    // Don't process input during animations
-    if (state.ui.isAnimating) return;
-    
-    const cell = state.game.board.cells[position.row]?.[position.col];
-    if (!cell) return;
-    
-    if (state.game.selectedPiece) {
-      // A piece is already selected - try to make a move
-      this.handleMoveAttempt(position);
-    } else if (cell.type === 'piece' && cell.owner === state.game.currentPlayer) {
-      // Select this piece
-      this.store.dispatch(selectPiece(position));
-    }
-  }
-  
-  private handleMoveAttempt(position: Position): void {
-    const state = this.store.getState();
-    const validMove = state.game.validMoves.find(
-      m => m.to.row === position.row && m.to.col === position.col
-    );
-    
-    if (validMove) {
-      this.store.dispatch(makeMove(state.game.selectedPiece!, position));
-    } else {
-      // Invalid move - deselect
-      this.store.dispatch(deselectPiece());
-    }
-  }
-}
-```
+The InputHandler class manages:
+- Touch events for mobile/tablet devices
+- Click events for mouse input
+- Converting screen coordinates to board positions
+- Dispatching appropriate Redux actions based on input
 
 ---
 
@@ -601,38 +284,22 @@ The board is centered on the display with equal spacing on all sides, allowing p
 
 ### Scripts
 
-```json
-{
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "test": "vitest",
-    "test:e2e": "playwright test",
-    "lint": "eslint src --ext .ts"
-  }
-}
-```
+- `npm run dev`: Start development server
+- `npm run build`: Build for production
+- `npm run preview`: Preview production build
+- `npm run test`: Run unit tests
+- `npm run test:e2e`: Run end-to-end tests
 
 ### Dependencies
 
-```json
-{
-  "dependencies": {
-    "redux": "^5.0.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.0.0",
-    "vite": "^5.0.0",
-    "@types/node": "^20.0.0",
-    "eslint": "^8.0.0",
-    "@typescript-eslint/parser": "^6.0.0",
-    "@typescript-eslint/eslint-plugin": "^6.0.0",
-    "vitest": "^2.0.0",
-    "@playwright/test": "^1.40.0"
-  }
-}
-```
+**Runtime:**
+- redux: State management
+
+**Development:**
+- typescript: Type checking
+- vite: Build tool and dev server
+- vitest: Unit testing
+- @playwright/test: E2E testing
 
 ---
 
