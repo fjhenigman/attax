@@ -154,7 +154,7 @@ function getMoveType(from: Position, to: Position): 'clone' | 'jump' {
 function getConvertedPieces(
   board: Cell[][], 
   position: Position, 
-  player: Player
+  player: 'red' | 'blue'
 ): Position[] {
   const converted: Position[] = [];
   const { row, col } = position;
@@ -246,14 +246,14 @@ class GameRenderer {
     for (let row = 0; row < 7; row++) {
       for (let col = 0; col < 7; col++) {
         const cell = board[row][col];
-        if (cell.type === 'piece') {
-          this.drawPiece(row, col, cell.owner!);
+        if (cell.type === 'piece' && cell.owner) {
+          this.drawPiece(row, col, cell.owner);
         }
       }
     }
   }
   
-  private drawPiece(row: number, col: number, owner: string): void {
+  private drawPiece(row: number, col: number, owner: 'red' | 'blue'): void {
     const x = col * this.cellSize + this.cellSize / 2;
     const y = row * this.cellSize + this.cellSize / 2;
     const radius = this.cellSize * 0.4;
@@ -293,9 +293,11 @@ class InputHandler {
   
   private processInput(position: Position): void {
     const state = this.store.getState();
-    const cell = state.board[position.row]?.[position.col];
     
-    if (!cell) return;
+    // Validate position bounds
+    if (!this.isValidPosition(position)) return;
+    
+    const cell = state.board[position.row][position.col];
     
     if (state.selectedPiece) {
       // Try to make a move
@@ -314,6 +316,11 @@ class InputHandler {
     } else if (cell.type === 'piece' && cell.owner === state.currentPlayer) {
       this.store.dispatch({ type: 'SELECT_PIECE', payload: position });
     }
+  }
+  
+  private isValidPosition(position: Position): boolean {
+    return position.row >= 0 && position.row < 7 &&
+           position.col >= 0 && position.col < 7;
   }
 }
 ```
