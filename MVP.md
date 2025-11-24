@@ -56,30 +56,15 @@ This document describes the Minimum Viable Product for Attax - a playable versio
 
 ## State Structure
 
-```typescript
-interface GameState {
-  board: Cell[][];           // 7x7 grid
-  currentPlayer: 'red' | 'blue';
-  selectedPiece: Position | null;
-  validMoves: Position[];
-  gameStatus: 'playing' | 'finished';
-  winner: 'red' | 'blue' | 'draw' | null;
-  scores: {
-    red: number;
-    blue: number;
-  };
-}
+The MVP game state contains:
 
-interface Cell {
-  type: 'empty' | 'piece';
-  owner?: 'red' | 'blue';
-}
-
-interface Position {
-  row: number;
-  col: number;
-}
-```
+- **board**: 7x7 grid of cells (empty or piece with owner)
+- **currentPlayer**: 'red' or 'blue'
+- **selectedPiece**: Currently selected piece position or null
+- **validMoves**: Array of valid move destinations
+- **gameStatus**: 'playing' or 'finished'
+- **winner**: 'red', 'blue', 'draw', or null
+- **scores**: Piece counts for red and blue players
 
 ---
 
@@ -112,223 +97,46 @@ interface Position {
 
 ### Move Validation
 
-```typescript
-function getValidMoves(board: Cell[][], position: Position): Position[] {
-  const moves: Position[] = [];
-  const { row, col } = position;
-  
-  // Check all cells within 2 squares
-  for (let dr = -2; dr <= 2; dr++) {
-    for (let dc = -2; dc <= 2; dc++) {
-      if (dr === 0 && dc === 0) continue;
-      
-      const newRow = row + dr;
-      const newCol = col + dc;
-      
-      if (isValidPosition(newRow, newCol) && 
-          board[newRow][newCol].type === 'empty') {
-        moves.push({ row: newRow, col: newCol });
-      }
-    }
-  }
-  
-  return moves;
-}
-```
+Valid moves are all empty cells within 2 squares of the selected piece (horizontally, vertically, or diagonally).
 
 ### Move Types
 
-```typescript
-function getMoveType(from: Position, to: Position): 'clone' | 'jump' {
-  const distance = Math.max(
-    Math.abs(to.row - from.row),
-    Math.abs(to.col - from.col)
-  );
-  return distance === 1 ? 'clone' : 'jump';
-}
-```
+- **Clone** (distance 1): Piece is duplicated to adjacent cell
+- **Jump** (distance 2): Piece moves to destination, leaving original cell empty
 
 ### Piece Conversion
 
-```typescript
-function getConvertedPieces(
-  board: Cell[][], 
-  position: Position, 
-  player: 'red' | 'blue'
-): Position[] {
-  const converted: Position[] = [];
-  const { row, col } = position;
-  
-  // Check all 8 adjacent cells
-  for (let dr = -1; dr <= 1; dr++) {
-    for (let dc = -1; dc <= 1; dc++) {
-      if (dr === 0 && dc === 0) continue;
-      
-      const adjRow = row + dr;
-      const adjCol = col + dc;
-      
-      if (isValidPosition(adjRow, adjCol)) {
-        const cell = board[adjRow][adjCol];
-        if (cell.type === 'piece' && cell.owner !== player) {
-          converted.push({ row: adjRow, col: adjCol });
-        }
-      }
-    }
-  }
-  
-  return converted;
-}
-```
+After each move, all opponent pieces adjacent to the destination cell are converted to the current player's color.
 
 ---
 
 ## Redux Actions (MVP)
 
-```typescript
-// Select a piece
-{ type: 'SELECT_PIECE', payload: Position }
-
-// Make a move
-{ type: 'MAKE_MOVE', payload: { from: Position, to: Position } }
-
-// Deselect current piece  
-{ type: 'DESELECT_PIECE' }
-
-// Start new game
-{ type: 'NEW_GAME' }
-```
+- **SELECT_PIECE**: Select a piece to move
+- **MAKE_MOVE**: Execute a move from one position to another
+- **DESELECT_PIECE**: Cancel piece selection
+- **NEW_GAME**: Start a new game
 
 ---
 
 ## Canvas Rendering (MVP)
 
-Simple, functional rendering without optimizations:
+Simple, functional rendering:
 
-```typescript
-class GameRenderer {
-  private ctx: CanvasRenderingContext2D;
-  private cellSize: number;
-  private width: number;
-  private height: number;
-  
-  render(state: GameState): void {
-    this.clear();
-    this.drawGrid();
-    this.drawPieces(state.board);
-    this.drawSelection(state.selectedPiece);
-    this.drawValidMoves(state.validMoves);
-    this.drawUI(state);
-  }
-  
-  private clear(): void {
-    this.ctx.fillStyle = '#2D3748';
-    this.ctx.fillRect(0, 0, this.width, this.height);
-  }
-  
-  private drawGrid(): void {
-    this.ctx.strokeStyle = '#4A5568';
-    this.ctx.lineWidth = 2;
-    
-    for (let i = 0; i <= 7; i++) {
-      // Vertical lines
-      this.ctx.beginPath();
-      this.ctx.moveTo(i * this.cellSize, 0);
-      this.ctx.lineTo(i * this.cellSize, 7 * this.cellSize);
-      this.ctx.stroke();
-      
-      // Horizontal lines
-      this.ctx.beginPath();
-      this.ctx.moveTo(0, i * this.cellSize);
-      this.ctx.lineTo(7 * this.cellSize, i * this.cellSize);
-      this.ctx.stroke();
-    }
-  }
-  
-  private drawPieces(board: Cell[][]): void {
-    for (let row = 0; row < 7; row++) {
-      for (let col = 0; col < 7; col++) {
-        const cell = board[row][col];
-        if (cell.type === 'piece' && cell.owner) {
-          this.drawPiece(row, col, cell.owner);
-        }
-      }
-    }
-  }
-  
-  private drawPiece(row: number, col: number, owner: 'red' | 'blue'): void {
-    const x = col * this.cellSize + this.cellSize / 2;
-    const y = row * this.cellSize + this.cellSize / 2;
-    const radius = this.cellSize * 0.4;
-    
-    this.ctx.beginPath();
-    this.ctx.arc(x, y, radius, 0, Math.PI * 2);
-    this.ctx.fillStyle = owner === 'red' ? '#E53E3E' : '#3182CE';
-    this.ctx.fill();
-  }
-}
-```
+- Clear canvas with background color
+- Draw grid lines
+- Draw pieces as colored circles
+- Highlight selected piece with yellow border
+- Show valid moves with semi-transparent green overlay
+- Display UI (scores, current player, winner)
 
 ---
 
 ## Input Handling (MVP)
 
-```typescript
-class InputHandler {
-  private store: Store<GameState>;
-  
-  constructor(canvas: HTMLCanvasElement, store: Store<GameState>) {
-    this.store = store;
-    canvas.addEventListener('click', (e) => this.handleClick(e));
-    canvas.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      this.handleTouch(e);
-    });
-  }
-  
-  private handleClick(event: MouseEvent): void {
-    const position = this.getPosition(event.clientX, event.clientY);
-    this.processInput(position);
-  }
-  
-  private handleTouch(event: TouchEvent): void {
-    const touch = event.touches[0];
-    const position = this.getPosition(touch.clientX, touch.clientY);
-    this.processInput(position);
-  }
-  
-  private processInput(position: Position): void {
-    const state = this.store.getState();
-    
-    // Validate position bounds
-    if (!this.isValidPosition(position)) return;
-    
-    const cell = state.board[position.row][position.col];
-    
-    if (state.selectedPiece) {
-      // Try to make a move
-      const isValidMove = state.validMoves.some(
-        m => m.row === position.row && m.col === position.col
-      );
-      
-      if (isValidMove) {
-        this.store.dispatch({ 
-          type: 'MAKE_MOVE', 
-          payload: { from: state.selectedPiece, to: position } 
-        });
-      } else {
-        this.store.dispatch({ type: 'DESELECT_PIECE' });
-      }
-    } else if (cell.type === 'piece' && cell.owner === state.currentPlayer) {
-      this.store.dispatch({ type: 'SELECT_PIECE', payload: position });
-    }
-  }
-  
-  private isValidPosition(position: Position): boolean {
-    return position.row >= 0 && position.row < 7 &&
-           position.col >= 0 && position.col < 7;
-  }
-}
-```
+- Listen for click and touch events on canvas
+- Convert screen coordinates to board positions
+- Dispatch appropriate Redux actions based on game state and clicked position
 
 ---
 
