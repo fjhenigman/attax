@@ -3,11 +3,13 @@ import { configureStore } from './store';
 import { newGame } from './store/actions';
 import { GameRenderer } from './renderer';
 import { InputHandler } from './input';
+import { AnimationManager } from './animation';
 
 class AttaxGame {
   private store;
   private renderer: GameRenderer;
   private canvas: HTMLCanvasElement;
+  private animationManager: AnimationManager;
 
   constructor() {
     // Create canvas
@@ -17,11 +19,15 @@ class AttaxGame {
     // Setup store
     this.store = configureStore();
     
+    // Setup animation manager
+    this.animationManager = new AnimationManager();
+    
     // Setup renderer
     this.renderer = new GameRenderer(this.canvas);
+    this.renderer.setAnimationManager(this.animationManager);
     
     // Setup input handler
-    new InputHandler(this.canvas, this.store, this.renderer);
+    new InputHandler(this.canvas, this.store, this.renderer, this.animationManager);
     
     // Subscribe to state changes
     this.store.subscribe(() => {

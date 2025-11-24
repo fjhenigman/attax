@@ -1,6 +1,7 @@
 // Canvas renderer for Attax game
-import type { GameState, Position } from './types';
+import type { GameState, Position, Player } from './types';
 import { BOARD_SIZE } from './game/board';
+import type { AnimationManager, AnimatedPiece, ConversionAnimation } from './animation';
 
 // Colors from the design document
 const COLORS = {
@@ -9,6 +10,8 @@ const COLORS = {
   emptyCells: '#1A202C',
   red: '#E53E3E',
   blue: '#3182CE',
+  redBright: '#FC5252',  // Brighter red for pulse
+  blueBright: '#4299E1', // Brighter blue for pulse
   selectionHighlight: '#F6E05E',
   validMoveHint: 'rgba(72, 187, 120, 0.5)',
   text: '#FFFFFF',
@@ -22,6 +25,7 @@ export class GameRenderer {
   private boardOffsetX: number = 0;
   private boardOffsetY: number = 0;
   private uiHeight: number = 80;
+  private animationManager: AnimationManager | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -50,6 +54,10 @@ export class GameRenderer {
     this.boardOffsetY = Math.floor((availableHeight - boardHeight) / 2);
   }
 
+  public setAnimationManager(manager: AnimationManager): void {
+    this.animationManager = manager;
+  }
+
   public resize(width: number, height: number): void {
     this.canvas.width = width;
     this.canvas.height = height;
@@ -61,6 +69,7 @@ export class GameRenderer {
     this.drawGrid();
     this.drawValidMoves(state.validMoves);
     this.drawPieces(state);
+    this.drawAnimations();
     this.drawSelection(state.selectedPiece);
     this.drawUI(state);
   }
@@ -105,20 +114,78 @@ export class GameRenderer {
   }
 
   private drawPieces(state: GameState): void {
+    // Get positions that are being animated (should not be drawn normally)
+    const animatedPositions = this.animationManager?.getAnimatedPositions() ?? 
+      { source: null, destination: null, conversions: [] };
+    
     for (let row = 0; row < BOARD_SIZE; row++) {
       for (let col = 0; col < BOARD_SIZE; col++) {
         const cell = state.board[row][col];
         if (cell.type === 'piece' && cell.owner) {
+          // Skip positions that are being animated
+          if (this.isPositionAnimated({ row, col }, animatedPositions)) {
+            continue;
+          }
           this.drawPiece(row, col, cell.owner);
         }
       }
     }
   }
 
+  private isPositionAnimated(
+    pos: Position, 
+    animated: { source: Position | null; destination: Position | null; conversions: Position[] }
+  ): boolean {
+    if (animated.source && animated.source.row === pos.row && animated.source.col === pos.col) {
+      return true;
+    }
+    if (animated.destination && animated.destination.row === pos.row && animated.destination.col === pos.col) {
+      return true;
+    }
+    for (const conv of animated.conversions) {
+      if (conv.row === pos.row && conv.col === pos.col) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private drawPiece(row: number, col: number, owner: 'red' | 'blue'): void {
-    const x = this.boardOffsetX + col * this.cellSize + this.cellSize / 2;
-    const y = this.boardOffsetY + row * this.cellSize + this.cellSize / 2;
-    const radius = this.cellSize * 0.4;
+    this.drawPieceAtPosition(
+      this.boardOffsetX + col * this.cellSize + this.cellSize / 2,
+      this.boardOffsetY + row * this.cellSize + this.cellSize / 2,
+      owner,
+      1,  // scale
+      1   // opacity
+    );
+  }
+
+  private drawPieceAtPosition(
+    x: number, 
+    y: number, 
+    owner: Player, 
+    scale: number = 1, 
+    opacity: number = 1,
+    shadow?: { opacity: number; blur: number; offsetY: number }
+  ): void {
+    const radius = this.cellSize * 0.4 * scale;
+    
+    this.ctx.save();
+    this.ctx.globalAlpha = opacity;
+
+    // Draw shadow if provided
+    if (shadow && shadow.opacity > 0) {
+      this.ctx.fillStyle = `rgba(0, 0, 0, ${shadow.opacity})`;
+      this.ctx.beginPath();
+      this.ctx.ellipse(
+        x, 
+        y + shadow.offsetY, 
+        radius * 0.9, 
+        radius * 0.4, 
+        0, 0, Math.PI * 2
+      );
+      this.ctx.fill();
+    }
     
     this.ctx.beginPath();
     this.ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -129,6 +196,81 @@ export class GameRenderer {
     this.ctx.strokeStyle = owner === 'red' ? '#C53030' : '#2B6CB0';
     this.ctx.lineWidth = 2;
     this.ctx.stroke();
+    
+    this.ctx.restore();
+  }
+
+  private drawAnimations(): void {
+    if (!this.animationManager || !this.animationManager.isAnimating()) {
+      return;
+    }
+
+    // Draw source piece pulse (for clone moves)
+    const sourcePulse = this.animationManager.getSourcePieceState();
+    if (sourcePulse) {
+      this.drawAnimatedPiece(sourcePulse);
+    }
+
+    // Draw moving piece
+    const movingPiece = this.animationManager.getMovingPieceState();
+    if (movingPiece) {
+      this.drawAnimatedPiece(movingPiece);
+    }
+
+    // Draw conversion animations
+    const conversions = this.animationManager.getConversionStates();
+    for (const conv of conversions) {
+      this.drawConversionAnimation(conv);
+    }
+  }
+
+  private drawAnimatedPiece(piece: AnimatedPiece): void {
+    const x = this.boardOffsetX + piece.position.col * this.cellSize + this.cellSize / 2 + 
+              piece.offsetX * this.cellSize;
+    const y = this.boardOffsetY + piece.position.row * this.cellSize + this.cellSize / 2 + 
+              piece.offsetY * this.cellSize;
+    
+    this.drawPieceAtPosition(
+      x, 
+      y, 
+      piece.owner, 
+      piece.scale, 
+      piece.opacity,
+      piece.shadow.opacity > 0 ? piece.shadow : undefined
+    );
+  }
+
+  private drawConversionAnimation(conv: ConversionAnimation): void {
+    const x = this.boardOffsetX + conv.position.col * this.cellSize + this.cellSize / 2;
+    const y = this.boardOffsetY + conv.position.row * this.cellSize + this.cellSize / 2;
+    const radius = this.cellSize * 0.4;
+
+    // Determine which color to show based on rotation (flip effect)
+    // 0-90 degrees: show fromOwner with horizontal squeeze
+    // 90-180 degrees: show toOwner with horizontal expand
+    const rotation = conv.rotation;
+    const isFirstHalf = rotation < 90;
+    const owner = isFirstHalf ? conv.fromOwner : conv.toOwner;
+    
+    // Calculate the horizontal scale for flip effect
+    // At 0 degrees: full width, at 90 degrees: zero width
+    const angle = isFirstHalf ? rotation : (180 - rotation);
+    const scaleX = Math.cos((angle * Math.PI) / 180);
+
+    this.ctx.save();
+    this.ctx.translate(x, y);
+    this.ctx.scale(scaleX, 1);
+    
+    this.ctx.beginPath();
+    this.ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    this.ctx.fillStyle = owner === 'red' ? COLORS.red : COLORS.blue;
+    this.ctx.fill();
+    
+    this.ctx.strokeStyle = owner === 'red' ? '#C53030' : '#2B6CB0';
+    this.ctx.lineWidth = 2;
+    this.ctx.stroke();
+    
+    this.ctx.restore();
   }
 
   private drawSelection(selectedPiece: Position | null): void {
