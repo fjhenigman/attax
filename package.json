@@ -19,6 +19,8 @@
     "vitest": "^3.0.5"
   },
   "dependencies": {
-    "redux": "^5.0.1"
+    "@types/simple-peer": "^9.11.9",
+    "redux": "^5.0.1",
+    "simple-peer": "^9.11.1"
   }
 }

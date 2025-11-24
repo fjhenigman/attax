@@ -1,5 +1,5 @@
 // Input handler for Attax game
-import type { AppStore } from './store';
+import type { AppStore, CombinedState } from './store';
 import { selectPiece, deselectPiece, makeMove } from './store/actions';
 import { GameRenderer } from './renderer';
 
@@ -37,33 +37,42 @@ export class InputHandler {
   }
 
   private processInput(clientX: number, clientY: number): void {
-    const state = this.store.getState();
+    const state = this.store.getState() as CombinedState;
+    const gameState = state.game;
+    const networkState = state.network;
     
     // Don't process input if game is finished
-    if (state.gameStatus === 'finished') return;
+    if (gameState.gameStatus === 'finished') return;
+    
+    // In online mode, only allow input when it's our turn
+    if (networkState.mode === 'online' && networkState.connectionStatus === 'connected') {
+      if (gameState.currentPlayer !== networkState.playerColor) {
+        return; // Not our turn
+      }
+    }
     
     const position = this.renderer.getBoardPosition(clientX, clientY);
     if (!position) return;
     
-    const cell = state.board[position.row]?.[position.col];
+    const cell = gameState.board[position.row]?.[position.col];
     if (!cell) return;
     
-    if (state.selectedPiece) {
+    if (gameState.selectedPiece) {
       // A piece is already selected - try to make a move
-      const isValidMove = state.validMoves.some(
+      const isValidMove = gameState.validMoves.some(
         m => m.row === position.row && m.col === position.col
       );
       
       if (isValidMove) {
-        this.store.dispatch(makeMove(state.selectedPiece, position));
-      } else if (cell.type === 'piece' && cell.owner === state.currentPlayer) {
+        this.store.dispatch(makeMove(gameState.selectedPiece, position));
+      } else if (cell.type === 'piece' && cell.owner === gameState.currentPlayer) {
         // Clicked on another own piece - select it instead
         this.store.dispatch(selectPiece(position));
       } else {
         // Clicked elsewhere - deselect
         this.store.dispatch(deselectPiece());
       }
-    } else if (cell.type === 'piece' && cell.owner === state.currentPlayer) {
+    } else if (cell.type === 'piece' && cell.owner === gameState.currentPlayer) {
       // Select this piece
       this.store.dispatch(selectPiece(position));
     }
