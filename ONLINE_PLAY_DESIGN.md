@@ -98,7 +98,7 @@ interface Message {
 | Type | Payload | Description |
 |------|---------|-------------|
 | `SESSION_CREATED` | `{ sessionId: string, shareCode: string }` | Session created successfully |
-| `SESSION_JOINED` | `{ sessionId: string, opponent: string, playerColor: Player }` | Joined session |
+| `SESSION_JOINED` | `{ sessionId: string, opponentName: string, playerColor: Player }` | Joined session |
 | `GAME_START` | `{ gameState: GameState, yourColor: Player }` | Game is starting |
 | `MOVE_MADE` | `{ move: Move, newState: GameState }` | A move was made |
 | `MOVE_REJECTED` | `{ reason: string }` | Move was invalid |
@@ -249,7 +249,8 @@ const networkMiddleware: Middleware = (store) => (next) => (action) => {
   // For online games, send moves to server instead of applying locally
   if (action.type === 'MAKE_MOVE' && store.getState().network.sessionId) {
     networkManager.sendMove(action.payload);
-    return; // Don't apply locally; wait for server confirmation
+    // Return action to indicate pending state; actual state update comes from server
+    return next({ type: 'MOVE_PENDING', payload: action.payload });
   }
   return next(action);
 };
@@ -378,12 +379,12 @@ Prevent abuse:
 ### Disconnect Detection
 
 - WebSocket `close` event
-- Ping/pong timeout (30 seconds without response)
+- Ping/pong timeout (15 seconds without response)
 
 ### Reconnection Flow
 
 1. Player disconnects (network issue, page refresh, etc.)
-2. Server marks player as disconnected, sets reconnection timeout (2 minutes)
+2. Server marks player as disconnected, sets reconnection timeout (60 seconds)
 3. Server sends `OPPONENT_DISCONNECTED` to other player
 4. Disconnected player reconnects with session ID
 5. Server restores connection, sends current game state
