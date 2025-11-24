@@ -5,6 +5,46 @@ test.describe('Attax Game', () => {
     await page.goto('/');
   });
 
+  test.describe('game board clipping at various window sizes', () => {
+    const windowSizes = [
+      { width: 320, height: 480, name: 'small mobile' },
+      { width: 375, height: 667, name: 'iPhone SE' },
+      { width: 768, height: 1024, name: 'tablet portrait' },
+      { width: 1024, height: 768, name: 'tablet landscape' },
+      { width: 1280, height: 720, name: 'desktop HD' },
+      { width: 1920, height: 1080, name: 'desktop Full HD' },
+      { width: 400, height: 300, name: 'small square-ish' },
+      { width: 300, height: 600, name: 'narrow tall' },
+      { width: 600, height: 300, name: 'wide short' },
+    ];
+
+    for (const size of windowSizes) {
+      test(`game board is not clipped at ${size.name} (${size.width}x${size.height})`, async ({ page }) => {
+        await page.setViewportSize({ width: size.width, height: size.height });
+        
+        // Wait for the canvas to be visible
+        const canvas = page.locator('#game-canvas');
+        await expect(canvas).toBeVisible();
+        
+        // Get the canvas bounding box
+        const canvasBox = await canvas.boundingBox();
+        expect(canvasBox).not.toBeNull();
+        
+        if (canvasBox) {
+          // Verify the canvas is within the viewport (not clipped)
+          expect(canvasBox.x).toBeGreaterThanOrEqual(0);
+          expect(canvasBox.y).toBeGreaterThanOrEqual(0);
+          expect(canvasBox.x + canvasBox.width).toBeLessThanOrEqual(size.width);
+          expect(canvasBox.y + canvasBox.height).toBeLessThanOrEqual(size.height);
+          
+          // Verify the canvas has reasonable dimensions
+          expect(canvasBox.width).toBeGreaterThan(0);
+          expect(canvasBox.height).toBeGreaterThan(0);
+        }
+      });
+    }
+  });
+
   test('displays game title', async ({ page }) => {
     await expect(page.locator('h1')).toContainText('Attax');
   });
