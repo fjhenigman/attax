@@ -30,17 +30,15 @@ test.describe('Attax Game', () => {
         const canvasBox = await canvas.boundingBox();
         expect(canvasBox).not.toBeNull();
         
-        if (canvasBox) {
-          // Verify the canvas is within the viewport (not clipped)
-          expect(canvasBox.x).toBeGreaterThanOrEqual(0);
-          expect(canvasBox.y).toBeGreaterThanOrEqual(0);
-          expect(canvasBox.x + canvasBox.width).toBeLessThanOrEqual(size.width);
-          expect(canvasBox.y + canvasBox.height).toBeLessThanOrEqual(size.height);
-          
-          // Verify the canvas has reasonable dimensions
-          expect(canvasBox.width).toBeGreaterThan(0);
-          expect(canvasBox.height).toBeGreaterThan(0);
-        }
+        // Verify the canvas is within the viewport (not clipped)
+        expect(canvasBox!.x).toBeGreaterThanOrEqual(0);
+        expect(canvasBox!.y).toBeGreaterThanOrEqual(0);
+        expect(canvasBox!.x + canvasBox!.width).toBeLessThanOrEqual(size.width);
+        expect(canvasBox!.y + canvasBox!.height).toBeLessThanOrEqual(size.height);
+        
+        // Verify the canvas has reasonable dimensions
+        expect(canvasBox!.width).toBeGreaterThan(0);
+        expect(canvasBox!.height).toBeGreaterThan(0);
       });
     }
   });
