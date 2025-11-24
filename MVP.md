@@ -208,6 +208,8 @@ Simple, functional rendering without optimizations:
 class GameRenderer {
   private ctx: CanvasRenderingContext2D;
   private cellSize: number;
+  private width: number;
+  private height: number;
   
   render(state: GameState): void {
     this.clear();
@@ -272,7 +274,10 @@ class GameRenderer {
 
 ```typescript
 class InputHandler {
-  constructor(canvas: HTMLCanvasElement, store: Store) {
+  private store: Store<GameState>;
+  
+  constructor(canvas: HTMLCanvasElement, store: Store<GameState>) {
+    this.store = store;
     canvas.addEventListener('click', (e) => this.handleClick(e));
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
