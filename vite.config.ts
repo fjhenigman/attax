@@ -6,5 +6,7 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.test.ts'],
   },
-  base: './',
+  // Use /attax/ for GitHub Pages deployment
+  // The repository name should match the GitHub repository
+  base: process.env.CI ? '/attax/' : '/',
 });
