@@ -51,7 +51,6 @@ All game interactions are designed for touch input without requiring gestures li
 - **Immediate Visual Response**: All taps provide instant visual acknowledgment (< 16ms)
 - **Ripple Effect**: Touch point shows brief ripple animation
 - **Sound Feedback**: Optional audio cues for selections and moves (configurable)
-- **Haptic Feedback**: Utilize device haptics where supported
 
 ---
 
@@ -163,7 +162,7 @@ class AnimationManager {
 
 ### Store Architecture
 
-Redux manages all game state, providing predictable state updates and enabling features like undo/redo and state persistence.
+Redux manages all game state, providing predictable state updates and enabling features like undo/redo.
 
 #### State Shape
 
@@ -321,14 +320,6 @@ const loggerMiddleware = (store) => (next) => (action) => {
   return result;
 };
 
-// Persistence Middleware
-const persistenceMiddleware = (store) => (next) => (action) => {
-  const result = next(action);
-  const state = store.getState();
-  localStorage.setItem('attax-state', JSON.stringify(state));
-  return result;
-};
-
 // Animation Middleware
 const animationMiddleware = (store) => (next) => (action) => {
   if (action.type === MAKE_MOVE) {
@@ -349,7 +340,6 @@ const store = createStore(
   compose(
     applyMiddleware(
       loggerMiddleware,
-      persistenceMiddleware,
       animationMiddleware
     )
   )
@@ -435,7 +425,6 @@ src/
 │   │   └── settingsReducer.ts
 │   └── middleware/
 │       ├── logger.ts       # Development logging
-│       ├── persistence.ts  # State persistence
 │       └── animation.ts    # Animation coordination
 ├── game/
 │   ├── Game.ts             # Main game controller
@@ -604,9 +593,10 @@ The board is centered on the display with equal spacing on all sides, allowing p
 ### Technology Stack
 
 - **Language**: TypeScript (vanilla, no frameworks)
-- **Bundler**: Vite or webpack
+- **Bundler**: Vite
 - **State Management**: Redux
-- **Testing**: Jest + Canvas testing utilities
+- **Unit Testing**: Vitest
+- **E2E Testing**: Playwright
 - **Linting**: ESLint with TypeScript rules
 
 ### Scripts
@@ -617,7 +607,8 @@ The board is centered on the display with equal spacing on all sides, allowing p
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "jest",
+    "test": "vitest",
+    "test:e2e": "playwright test",
     "lint": "eslint src --ext .ts"
   }
 }
@@ -637,8 +628,8 @@ The board is centered on the display with equal spacing on all sides, allowing p
     "eslint": "^8.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
-    "jest": "^29.0.0",
-    "ts-jest": "^29.0.0"
+    "vitest": "^2.0.0",
+    "@playwright/test": "^1.40.0"
   }
 }
 ```
@@ -654,7 +645,7 @@ The board is centered on the display with equal spacing on all sides, allowing p
 3. **Board Editor**: Create custom board layouts with blockers
 4. **Tournament Mode**: Support for competitive play
 5. **Replay System**: Save and review past games
-6. **Accessibility**: Screen reader support, keyboard navigation
+6. **Accessibility**: Keyboard navigation
 
 ### Scalability
 
