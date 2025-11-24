@@ -162,7 +162,7 @@ class AnimationManager {
 
 ### Store Architecture
 
-Redux manages all game state, providing predictable state updates and enabling features like undo/redo.
+Redux manages all game state, providing predictable state updates. The architecture enables future features like undo/redo through its immutable state model.
 
 #### State Shape
 
