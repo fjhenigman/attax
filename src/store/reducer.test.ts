@@ -140,6 +140,36 @@ describe('gameReducer', () => {
       // Board should be unchanged except for selection
       expect(newState.board[0][0]).toEqual({ type: 'piece', owner: 'red' });
     });
+
+    it('ends the game when one color is eliminated', () => {
+      let state = createInitialState();
+      
+      // Set up a board state where blue has only one piece at (1,1)
+      // and red has a piece at (0,0) that can eliminate it by cloning to (0,1)
+      // which will convert the blue piece
+      for (let row = 0; row < 7; row++) {
+        for (let col = 0; col < 7; col++) {
+          state.board[row][col] = { type: 'empty' };
+        }
+      }
+      state.board[0][0] = { type: 'piece', owner: 'red' };
+      state.board[1][1] = { type: 'piece', owner: 'blue' };
+      state.scores = { red: 1, blue: 1 };
+      state.currentPlayer = 'red';
+      
+      // Select the red piece
+      state = gameReducer(state, selectPiece({ row: 0, col: 0 }));
+      
+      // Clone to (1,0), which is adjacent to blue at (1,1)
+      // This will convert blue's only piece to red
+      state = gameReducer(state, makeMove({ row: 0, col: 0 }, { row: 1, col: 0 }));
+      
+      // Blue should now have 0 pieces and the game should be over
+      expect(state.scores.blue).toBe(0);
+      expect(state.scores.red).toBe(3); // original red + clone + converted blue
+      expect(state.gameStatus).toBe('finished');
+      expect(state.winner).toBe('red');
+    });
   });
 
   describe('NEW_GAME', () => {
