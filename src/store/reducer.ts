@@ -91,7 +91,11 @@ export function gameReducer(
       let winner: Player | 'draw' | null = null;
       let nextPlayer = opponent;
       
-      if (!opponentHasMoves && !currentHasMoves) {
+      // Game ends when one color is eliminated
+      if (scores.red === 0 || scores.blue === 0) {
+        gameStatus = 'finished';
+        winner = determineWinner(scores);
+      } else if (!opponentHasMoves && !currentHasMoves) {
         // Neither player can move - game over
         gameStatus = 'finished';
         winner = determineWinner(scores);
