@@ -2,58 +2,143 @@
 
 ## Overview
 
-This document outlines the technical design for adding online two-person play to Attax. Players will be able to create and join game sessions over the internet, playing against remote opponents in real-time.
+This document outlines the technical design for adding online two-person play to Attax using **WebRTC** for peer-to-peer communication and **pair.js** for simplified player pairing. Players can create a game, share a game code (via URL or verbally), and play against each other in real-time without requiring a dedicated game server.
 
 ---
 
 ## Goals
 
 1. **Real-time Gameplay**: Moves should propagate between players with minimal latency
-2. **Session Management**: Players can create, share, and join game sessions
-3. **Reconnection Support**: Handle network interruptions gracefully
-4. **Consistency**: Game state remains synchronized between both players
-5. **Security**: Prevent cheating and validate moves server-side
+2. **Serverless Architecture**: No dedicated game server required; peers connect directly
+3. **Easy Sharing**: Game codes can be shared via URL parameters for one-click joining
+4. **Simplicity**: Use pair.js to abstract WebRTC complexity
+5. **Consistency**: Game state remains synchronized between both players
 
 ---
 
 ## High-Level Architecture
 
 ```
-┌─────────────────────┐           ┌─────────────────────┐
-│      Player 1       │           │      Player 2       │
-│   ┌─────────────┐   │           │   ┌─────────────┐   │
-│   │   Browser   │   │           │   │   Browser   │   │
-│   │  ┌───────┐  │   │           │   │  ┌───────┐  │   │
-│   │  │ Redux │  │   │           │   │  │ Redux │  │   │
-│   │  │ Store │  │   │           │   │  │ Store │  │   │
-│   │  └───────┘  │   │           │   │  └───────┘  │   │
-│   │      │      │   │           │   │      │      │   │
-│   │  ┌───────┐  │   │           │   │  ┌───────┐  │   │
-│   │  │WebSocket│ │   │           │   │  │WebSocket│ │   │
-│   │  │ Client │  │   │           │   │  │ Client │  │   │
-│   │  └───────┘  │   │           │   │  └───────┘  │   │
-│   └──────│──────┘   │           │   └──────│──────┘   │
-└──────────│──────────┘           └──────────│──────────┘
-           │                                 │
-           └──────────┐       ┌──────────────┘
-                      │       │
-                      ▼       ▼
-              ┌───────────────────┐
-              │   Game Server     │
-              │  ┌─────────────┐  │
-              │  │  Session    │  │
-              │  │  Manager    │  │
-              │  └─────────────┘  │
-              │  ┌─────────────┐  │
-              │  │   Game      │  │
-              │  │  Validator  │  │
-              │  └─────────────┘  │
-              │  ┌─────────────┐  │
-              │  │  WebSocket  │  │
-              │  │   Server    │  │
-              │  └─────────────┘  │
-              └───────────────────┘
+┌─────────────────────────────┐           ┌─────────────────────────────┐
+│         Player 1            │           │         Player 2            │
+│   ┌─────────────────────┐   │           │   ┌─────────────────────┐   │
+│   │      Browser        │   │           │   │      Browser        │   │
+│   │  ┌───────────────┐  │   │           │   │  ┌───────────────┐  │   │
+│   │  │  Redux Store  │  │   │           │   │  │  Redux Store  │  │   │
+│   │  └───────────────┘  │   │           │   │  └───────────────┘  │   │
+│   │         │           │   │           │   │         │           │   │
+│   │  ┌───────────────┐  │   │           │   │  ┌───────────────┐  │   │
+│   │  │   pair.js     │  │   │           │   │  │   pair.js     │  │   │
+│   │  │  (WebRTC)     │  │◄──┼───────────┼──►│  │  (WebRTC)     │  │   │
+│   │  └───────────────┘  │   │  Direct   │   │  └───────────────┘  │   │
+│   └─────────────────────┘   │  P2P      │   └─────────────────────┘   │
+└─────────────────────────────┘  Connection└─────────────────────────────┘
+                                     │
+                    ┌────────────────┴────────────────┐
+                    │     pair.js Signaling Server    │
+                    │    (Only for initial pairing)   │
+                    └─────────────────────────────────┘
 ```
+
+### Key Differences from Server-Based Approach
+
+| Aspect | WebRTC + pair.js | Traditional Server |
+|--------|------------------|-------------------|
+| Game State | Distributed (both clients) | Centralized (server) |
+| Latency | Lower (direct P2P) | Higher (via server) |
+| Infrastructure | Minimal (signaling only) | Full game server |
+| Scalability | Automatic (no server load) | Server dependent |
+| Complexity | Simpler (pair.js abstracts) | More complex |
+
+---
+
+## pair.js Integration
+
+### What is pair.js?
+
+[pair.js](https://github.com/nickshanks347/pair.js) is a library that simplifies WebRTC peer-to-peer connections by:
+
+- Handling signaling automatically via a public signaling server
+- Generating simple, shareable pairing codes
+- Abstracting ICE candidate negotiation
+- Providing a simple send/receive API
+
+### Basic Usage
+
+```typescript
+import Pair from 'pair.js';
+
+// Player 1: Create a game and get a code
+const pair = new Pair();
+const gameCode = await pair.create();
+// gameCode example: "ABC123"
+
+// Player 2: Join using the code
+const pair = new Pair();
+await pair.join(gameCode);
+
+// Both players: Send and receive messages
+pair.send({ type: 'MOVE', from: {row: 0, col: 0}, to: {row: 1, col: 1} });
+pair.on('data', (message) => {
+  console.log('Received:', message);
+});
+```
+
+---
+
+## Game Code and URL Sharing
+
+### Game Code Format
+
+- **Generated by pair.js**: Typically 6 alphanumeric characters
+- **Case-insensitive**: For ease of verbal communication
+- **Short-lived**: Valid only while the creating player is waiting
+
+### URL Parameter Encoding
+
+Game codes are encoded in the URL for easy sharing:
+
+```
+https://attax.example.com/?game=ABC123
+```
+
+#### URL Handling Flow
+
+```typescript
+// On page load, check for game code in URL
+const urlParams = new URLSearchParams(window.location.search);
+const gameCode = urlParams.get('game');
+
+if (gameCode) {
+  // Auto-join the game
+  await joinGame(gameCode);
+} else {
+  // Show game mode selection
+  showMainMenu();
+}
+```
+
+### Shareable Link Generation
+
+When creating a game, generate a shareable link:
+
+```typescript
+function createShareableLink(gameCode: string): string {
+  const url = new URL(window.location.href);
+  url.searchParams.set('game', gameCode);
+  return url.toString();
+}
+
+// Example output: https://attax.example.com/?game=ABC123
+```
+
+### Sharing Options
+
+Players can share the game link via:
+
+1. **Copy to clipboard**: Button to copy the full URL
+2. **QR Code**: Generate QR code for mobile scanning (future enhancement)
+3. **Verbal**: Read the 6-character code to opponent
 
 ---
 
@@ -61,18 +146,16 @@ This document outlines the technical design for adding online two-person play to
 
 ### Transport Layer
 
-**WebSocket** is chosen for real-time bidirectional communication:
+**WebRTC DataChannel** (via pair.js) for peer-to-peer messaging:
 
-- **Low Latency**: Persistent connection eliminates HTTP overhead
-- **Real-time Updates**: Server can push state changes immediately
-- **Wide Support**: Available in all modern browsers
-- **Fallback**: Can degrade to HTTP long-polling if needed
+- **Ultra-low Latency**: Direct connection between browsers
+- **No Server Bottleneck**: Messages don't route through a server
+- **Reliable Delivery**: DataChannel supports reliable ordered delivery
+- **NAT Traversal**: pair.js handles STUN/TURN configuration
 
 ### Message Format
 
-All messages use JSON format for simplicity and debuggability.
-
-#### Base Message Structure
+All messages use JSON format:
 
 ```typescript
 interface Message {
@@ -82,103 +165,126 @@ interface Message {
 }
 ```
 
-#### Client-to-Server Messages
+### Message Types
 
-| Type | Payload | Description |
-|------|---------|-------------|
-| `CREATE_SESSION` | `{ playerName: string }` | Create a new game session |
-| `JOIN_SESSION` | `{ sessionId: string, playerName: string }` | Join an existing session |
-| `MAKE_MOVE` | `{ from: Position, to: Position }` | Submit a move |
-| `REQUEST_REMATCH` | `{}` | Request to play again |
-| `LEAVE_SESSION` | `{}` | Leave the current session |
-| `PING` | `{}` | Keep connection alive |
-
-#### Server-to-Client Messages
-
-| Type | Payload | Description |
-|------|---------|-------------|
-| `SESSION_CREATED` | `{ sessionId: string, shareCode: string }` | Session created successfully |
-| `SESSION_JOINED` | `{ sessionId: string, opponentName: string, playerColor: Player }` | Joined session |
-| `GAME_START` | `{ gameState: GameState, yourColor: Player }` | Game is starting |
-| `MOVE_MADE` | `{ move: Move, newState: GameState }` | A move was made |
-| `MOVE_REJECTED` | `{ reason: string }` | Move was invalid |
-| `OPPONENT_DISCONNECTED` | `{}` | Opponent lost connection |
-| `OPPONENT_RECONNECTED` | `{}` | Opponent reconnected |
-| `GAME_OVER` | `{ winner: Player \| 'draw', finalState: GameState }` | Game finished |
-| `REMATCH_REQUESTED` | `{ by: Player }` | Opponent wants rematch |
-| `ERROR` | `{ code: string, message: string }` | Error occurred |
-| `PONG` | `{}` | Response to ping |
+| Type | Direction | Payload | Description |
+|------|-----------|---------|-------------|
+| `GAME_START` | Host → Guest | `{ hostColor: Player, gameState: GameState }` | Game initialization |
+| `MAKE_MOVE` | Bidirectional | `{ from: Position, to: Position }` | Player makes a move |
+| `MOVE_ACK` | Bidirectional | `{ move: Move, newState: GameState }` | Acknowledge and sync state |
+| `REQUEST_REMATCH` | Bidirectional | `{}` | Request to play again |
+| `REMATCH_ACCEPTED` | Bidirectional | `{ gameState: GameState }` | Accept rematch |
+| `PLAYER_LEFT` | Bidirectional | `{}` | Player is leaving |
+| `SYNC_STATE` | Bidirectional | `{ gameState: GameState }` | Full state sync (recovery) |
 
 ---
 
-## Session Management
+## Player Roles
 
-### Session Lifecycle
+### Host (Game Creator)
 
+- Creates the game session via pair.js
+- Receives the game code to share
+- Determines initial game state and color assignment
+- Acts as tie-breaker for any state conflicts
+
+### Guest (Game Joiner)
+
+- Joins using the game code (from URL or manual entry)
+- Receives initial game state from host
+- Follows host's color assignment
+
+### Role Determination
+
+```typescript
+interface PeerState {
+  role: 'host' | 'guest';
+  playerColor: Player;
+  opponentConnected: boolean;
+}
+
+// Host creates game
+async function createGame(): Promise<string> {
+  const pair = new Pair();
+  const gameCode = await pair.create();
+  peerState.role = 'host';
+  peerState.playerColor = 'red'; // Host is always red
+  return gameCode;
+}
+
+// Guest joins game
+async function joinGame(gameCode: string): Promise<void> {
+  const pair = new Pair();
+  await pair.join(gameCode);
+  peerState.role = 'guest';
+  peerState.playerColor = 'blue'; // Guest is always blue
+}
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   WAITING   │────▶│   PLAYING   │────▶│  FINISHED   │
-│ (1 player)  │     │ (2 players) │     │ (game over) │
-└─────────────┘     └─────────────┘     └─────────────┘
-      │                   │                   │
-      │                   │                   │
-      ▼                   ▼                   ▼
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  ABANDONED  │     │   PAUSED    │     │   CLOSED    │
-│ (timeout)   │     │(disconnect) │     │ (cleanup)   │
-└─────────────┘     └─────────────┘     └─────────────┘
-```
-
-### Session States
-
-| State | Description |
-|-------|-------------|
-| `WAITING` | Session created, waiting for second player |
-| `PLAYING` | Both players connected, game in progress |
-| `PAUSED` | One player disconnected, waiting for reconnection |
-| `FINISHED` | Game completed, awaiting rematch or close |
-| `ABANDONED` | Session timed out without second player |
-| `CLOSED` | Session terminated and cleaned up |
-
-### Share Codes
-
-Sessions are identified by a human-readable share code for easy sharing:
-
-- **Format**: 6 alphanumeric characters (e.g., `ABC123`)
-- **Case-insensitive**: For ease of verbal communication
-- **Expiration**: Codes expire after session ends or timeout
 
 ---
 
 ## Game State Synchronization
 
-### Source of Truth
+### Synchronization Model
 
-The **server maintains authoritative game state**. Client state is derived from server messages.
+Since there's no central server, both peers maintain game state:
 
-### Synchronization Flow
+1. **Optimistic Local Updates**: Apply moves immediately for responsiveness
+2. **Peer Notification**: Send move to opponent
+3. **Acknowledgment**: Opponent validates and acknowledges
+4. **Conflict Resolution**: Host's state wins in case of divergence
 
-1. Player submits move via `MAKE_MOVE` message
-2. Server validates move against current state
-3. If valid: Server updates state, broadcasts `MOVE_MADE` to both clients
-4. If invalid: Server sends `MOVE_REJECTED` to submitting client
-5. Clients update local Redux store from server state
+### Move Flow
 
-### Optimistic Updates
+```
+Player A                              Player B
+    │                                     │
+    │  (1) Make move locally              │
+    ├────────────────────────────────────►│
+    │      MAKE_MOVE { from, to }         │
+    │                                     │
+    │                    (2) Validate and │
+    │                        apply move   │
+    │◄────────────────────────────────────┤
+    │      MOVE_ACK { move, newState }    │
+    │                                     │
+    │  (3) Confirm state sync             │
+    │                                     │
+```
 
-For better UX, clients may apply moves optimistically:
+### State Validation
 
-1. Client applies move locally immediately
-2. Client sends move to server
-3. If server rejects: Client reverts to server state
-4. If server accepts: Client state already matches
+Each peer validates incoming moves:
 
-### Conflict Resolution
-
-In case of state divergence:
-- Server state always wins
-- Clients receive full game state in `MOVE_MADE` messages
-- Clients must replace local state with server state
+```typescript
+function handleIncomingMove(message: MakeMoveMessage): void {
+  const { from, to } = message.payload;
+  
+  // Reject if it's my turn (opponent shouldn't be moving)
+  if (gameState.currentPlayer === myColor) {
+    // Invalid: it's my turn, not opponent's - state is out of sync
+    requestStateSync();
+    return;
+  }
+  
+  // Validate move is legal
+  if (!isValidMove(gameState, from, to)) {
+    // Invalid move - request sync
+    requestStateSync();
+    return;
+  }
+  
+  // Apply move
+  const newState = applyMove(gameState, from, to);
+  updateGameState(newState);
+  
+  // Send acknowledgment
+  peer.send({
+    type: 'MOVE_ACK',
+    payload: { move: { from, to }, newState }
+  });
+}
+```
 
 ---
 
@@ -186,27 +292,32 @@ In case of state divergence:
 
 ### New Components
 
-#### NetworkManager
+#### PeerManager
 
-Handles WebSocket connection and message routing.
+Handles pair.js connection and message routing:
 
 ```typescript
-class NetworkManager {
-  private socket: WebSocket | null;
-  private sessionId: string | null;
+class PeerManager {
+  private pair: Pair | null;
+  private role: 'host' | 'guest' | null;
+  private gameCode: string | null;
   
-  connect(serverUrl: string): Promise<void>;
+  // Create a new game (host role)
+  async createGame(): Promise<string>;
+  
+  // Join an existing game (guest role)
+  async joinGame(gameCode: string): Promise<void>;
+  
+  // Send message to peer
+  send(message: Message): void;
+  
+  // Disconnect and cleanup
   disconnect(): void;
   
-  createSession(playerName: string): Promise<SessionInfo>;
-  joinSession(shareCode: string, playerName: string): Promise<SessionInfo>;
-  
-  sendMove(move: Move): void;
-  requestRematch(): void;
-  
-  onMessage(handler: (message: Message) => void): void;
+  // Event handlers
+  onConnect(handler: () => void): void;
   onDisconnect(handler: () => void): void;
-  onReconnect(handler: () => void): void;
+  onMessage(handler: (message: Message) => void): void;
 }
 ```
 
@@ -216,11 +327,12 @@ New Redux slice for network state:
 
 ```typescript
 interface NetworkState {
+  mode: 'local' | 'online';
   connectionStatus: 'disconnected' | 'connecting' | 'connected';
-  sessionId: string | null;
-  shareCode: string | null;
+  role: 'host' | 'guest' | null;
+  gameCode: string | null;
+  shareableLink: string | null;
   playerColor: Player | null;
-  opponentName: string | null;
   opponentConnected: boolean;
   error: string | null;
 }
@@ -228,116 +340,221 @@ interface NetworkState {
 
 New actions:
 
-- `CONNECT_TO_SERVER`
-- `CONNECTION_ESTABLISHED`
-- `CONNECTION_LOST`
-- `SESSION_CREATED`
-- `SESSION_JOINED`
-- `OPPONENT_CONNECTED`
-- `OPPONENT_DISCONNECTED`
-- `RECEIVE_GAME_STATE`
+- `SET_GAME_MODE`
+- `CREATE_GAME`
+- `JOIN_GAME`
+- `PEER_CONNECTED`
+- `PEER_DISCONNECTED`
+- `RECEIVE_MOVE`
+- `SYNC_STATE`
 
 #### Network Middleware
 
-Redux middleware that:
-- Intercepts local game actions (e.g., `MAKE_MOVE`)
-- Sends corresponding messages to server
-- Dispatches actions from incoming server messages
+Redux middleware for online play:
 
 ```typescript
 const networkMiddleware: Middleware = (store) => (next) => (action) => {
-  // For online games, send moves to server instead of applying locally
-  if (action.type === 'MAKE_MOVE' && store.getState().network.sessionId) {
-    networkManager.sendMove(action.payload);
-    // Return action to indicate pending state; actual state update comes from server
-    return next({ type: 'MOVE_PENDING', payload: action.payload });
+  const state = store.getState();
+  
+  // For online games, send moves to peer
+  if (action.type === 'MAKE_MOVE' && state.network.mode === 'online') {
+    // Apply locally first (optimistic update)
+    const result = next(action);
+    
+    // Send to peer
+    peerManager.send({
+      type: 'MAKE_MOVE',
+      timestamp: Date.now(),
+      payload: action.payload
+    });
+    
+    return result;
   }
+  
   return next(action);
 };
 ```
 
 ### UI Changes
 
-#### Game Mode Selection
+#### Game Mode Selection Screen
 
-New screen to choose:
-- **Local Play**: Current behavior (two players, one device)
-- **Create Online Game**: Start new session, get share code
-- **Join Online Game**: Enter share code to join
+```
+┌─────────────────────────────────────────┐
+│              ATTAX                       │
+│                                         │
+│    ┌─────────────────────────────┐      │
+│    │      LOCAL PLAY             │      │
+│    │   (Two players, one device) │      │
+│    └─────────────────────────────┘      │
+│                                         │
+│    ┌─────────────────────────────┐      │
+│    │      CREATE ONLINE GAME     │      │
+│    │   (Get a code to share)     │      │
+│    └─────────────────────────────┘      │
+│                                         │
+│    ┌─────────────────────────────┐      │
+│    │      JOIN ONLINE GAME       │      │
+│    │   (Enter a game code)       │      │
+│    └─────────────────────────────┘      │
+│                                         │
+└─────────────────────────────────────────┘
+```
 
-#### Online Game Lobby
+#### Waiting for Opponent Screen (Host)
 
-Shows:
-- Share code (for session creator)
-- Waiting for opponent indicator
-- Cancel button
+```
+┌─────────────────────────────────────────┐
+│         WAITING FOR OPPONENT            │
+│                                         │
+│         Game Code: ABC123               │
+│                                         │
+│    ┌─────────────────────────────┐      │
+│    │     COPY LINK TO SHARE      │      │
+│    └─────────────────────────────┘      │
+│                                         │
+│    Share this link with your opponent:  │
+│    https://attax.example.com/?game=ABC123│
+│                                         │
+│         ⏳ Waiting for player...        │
+│                                         │
+│    ┌─────────────────────────────┐      │
+│    │          CANCEL             │      │
+│    └─────────────────────────────┘      │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+#### Join Game Screen (Guest)
+
+```
+┌─────────────────────────────────────────┐
+│           JOIN ONLINE GAME              │
+│                                         │
+│         Enter Game Code:                │
+│    ┌─────────────────────────────┐      │
+│    │         ABC123              │      │
+│    └─────────────────────────────┘      │
+│                                         │
+│    ┌─────────────────────────────┐      │
+│    │           JOIN              │      │
+│    └─────────────────────────────┘      │
+│                                         │
+│    ┌─────────────────────────────┐      │
+│    │          CANCEL             │      │
+│    └─────────────────────────────┘      │
+│                                         │
+└─────────────────────────────────────────┘
+```
 
 #### Online Game UI
 
-Additional elements:
-- Opponent name display
-- Connection status indicator
-- "Opponent's turn" / "Your turn" indicator
-- Reconnection overlay when opponent disconnects
+Additional elements during gameplay:
+
+- Connection status indicator (green dot when connected)
+- "Your turn" / "Opponent's turn" indicator
+- Opponent disconnect overlay with "Waiting for reconnection..."
 
 ---
 
-## Server-Side Architecture
+## Connection Lifecycle
 
-### Technology Recommendations
+### Session States
 
-| Component | Recommendation | Rationale |
-|-----------|---------------|-----------|
-| Runtime | Node.js | Same language as client, good WebSocket support |
-| WebSocket | `ws` library | Lightweight, well-maintained |
-| State Storage | In-memory | Sufficient for MVP; sessions are short-lived |
-| Share Codes | `nanoid` | Fast, URL-safe unique ID generation |
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  CREATING   │────▶│   WAITING   │────▶│   PLAYING   │
+│  (pair.js)  │     │ (for peer)  │     │  (active)   │
+└─────────────┘     └─────────────┘     └─────────────┘
+                          │                   │
+                          │                   │
+                          ▼                   ▼
+                    ┌─────────────┐     ┌─────────────┐
+                    │  CANCELLED  │     │DISCONNECTED │
+                    │             │     │             │
+                    └─────────────┘     └─────────────┘
+```
 
-### Core Components
+### Connection Flow (Host)
 
-#### WebSocket Server
+1. Player clicks "Create Online Game"
+2. Initialize pair.js and create session
+3. Receive game code from pair.js
+4. Display game code and shareable link
+5. Wait for peer connection
+6. On connection: Send `GAME_START` message
+7. Begin gameplay
 
-Handles connection lifecycle:
-- Accept new connections
-- Route messages to appropriate handlers
-- Manage connection state
-- Handle disconnections and cleanup
+### Connection Flow (Guest)
 
-#### Session Manager
+1. Player opens URL with `?game=ABC123` or enters code manually
+2. Initialize pair.js and join session with code
+3. Wait for connection to establish
+4. Receive `GAME_START` message from host
+5. Initialize game state
+6. Begin gameplay
 
-Manages game sessions:
-- Create new sessions
-- Match players to sessions via share codes
-- Track session states
-- Clean up expired/abandoned sessions
+---
 
-#### Game Validator
+## Reconnection Handling
 
-Reuses existing game logic to:
-- Validate moves against current state
-- Apply moves and compute new state
-- Detect game end conditions
+### Disconnect Detection
 
-### Server State Structure
+- pair.js `disconnect` event
+- Heartbeat timeout (10 seconds without response)
+
+### Reconnection Strategy
+
+Since WebRTC connections can be fragile, handle disconnects gracefully:
 
 ```typescript
-interface ServerSession {
-  id: string;
-  shareCode: string;
-  state: SessionState;
-  gameState: GameState;
-  players: {
-    red: PlayerConnection | null;
-    blue: PlayerConnection | null;
-  };
-  createdAt: number;
-  lastActivity: number;
-}
+peer.on('disconnect', () => {
+  dispatch({ type: 'PEER_DISCONNECTED' });
+  
+  // Show reconnection UI
+  showReconnectionOverlay();
+  
+  // For host: Wait for guest to rejoin with same code
+  // For guest: Attempt to rejoin with stored game code
+  if (role === 'guest' && gameCode) {
+    attemptReconnection(gameCode);
+  }
+});
 
-interface PlayerConnection {
-  socket: WebSocket;
-  name: string;
-  connected: boolean;
+async function attemptReconnection(code: string, maxAttempts = 3): Promise<void> {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      await joinGame(code);
+      return;
+    } catch (error) {
+      await delay(2000 * (i + 1)); // Exponential backoff
+    }
+  }
+  showReconnectionFailedMessage();
+}
+```
+
+### State Recovery
+
+After reconnection, sync game state:
+
+```typescript
+// Host sends current state to reconnected guest
+peer.on('connect', () => {
+  if (role === 'host') {
+    peer.send({
+      type: 'SYNC_STATE',
+      payload: { gameState: store.getState().game }
+    });
+  }
+});
+
+// Guest applies received state
+function handleSyncState(message: SyncStateMessage): void {
+  dispatch({
+    type: 'SET_GAME_STATE',
+    payload: message.payload.gameState
+  });
 }
 ```
 
@@ -347,78 +564,69 @@ interface PlayerConnection {
 
 ### Move Validation
 
-All moves are validated server-side:
-- Verify it's the player's turn
-- Verify the move is from a piece owned by the player
+Both peers validate moves locally:
+
+- Verify it's the correct player's turn
+- Verify the move is from a piece owned by that player
 - Verify the destination is a valid move
-- Reject invalid moves immediately
+- Reject and request sync if invalid
 
-### Session Security
+### Cheat Prevention
 
-- Share codes are unguessable (random, sufficient entropy)
-- Sessions have maximum lifetime
-- Players can only interact with their own sessions
+In a P2P architecture, complete cheat prevention is limited. Mitigations:
 
-### Rate Limiting
-
-Prevent abuse:
-- Limit connection attempts per IP
-- Limit messages per connection per second
-- Limit concurrent sessions per IP
+1. **Local Validation**: Each client validates opponent's moves
+2. **State Sync**: Request full state sync if discrepancy detected
+3. **Host Authority**: In conflicts, host's state is authoritative
 
 ### Input Sanitization
 
 - Validate all message payloads
 - Reject malformed messages
-- Sanitize player names for display
-
----
-
-## Reconnection Handling
-
-### Disconnect Detection
-
-- WebSocket `close` event
-- Ping/pong timeout (15 seconds without response)
-
-### Reconnection Flow
-
-1. Player disconnects (network issue, page refresh, etc.)
-2. Server marks player as disconnected, sets reconnection timeout (60 seconds)
-3. Server sends `OPPONENT_DISCONNECTED` to other player
-4. Disconnected player reconnects with session ID
-5. Server restores connection, sends current game state
-6. Server sends `OPPONENT_RECONNECTED` to other player
-7. Game resumes normally
-
-### Session Tokens
-
-For reconnection, clients store:
-- Session ID
-- Player authentication token (issued at join time)
-
-Stored in `localStorage` for persistence across page refreshes.
+- Ignore unexpected message types
 
 ---
 
 ## Error Handling
 
-### Network Errors
+### Connection Errors
 
-| Error | Client Response |
-|-------|-----------------|
-| Connection failed | Show retry option, allow offline play |
-| Connection lost mid-game | Show reconnecting overlay, auto-retry |
-| Server error | Display error message, offer to start new game |
+| Error | Response |
+|-------|----------|
+| Failed to create game | Show error, offer retry |
+| Failed to join game | Show "Game not found" or retry |
+| Connection lost | Show reconnection overlay, auto-retry |
+| Peer disconnected | Show waiting overlay, allow cancel |
 
 ### Game Errors
 
-| Error | Server Response |
-|-------|-----------------|
-| Invalid move | Send `MOVE_REJECTED` with reason |
-| Out of turn | Send `MOVE_REJECTED` with reason |
-| Session not found | Send `ERROR` with code `SESSION_NOT_FOUND` |
-| Session full | Send `ERROR` with code `SESSION_FULL` |
+| Error | Response |
+|-------|----------|
+| Invalid move received | Request state sync |
+| State mismatch | Sync to host's state |
+| Message parse error | Log and ignore |
+
+---
+
+## Dependencies
+
+### Runtime Dependencies
+
+| Package | Purpose | Version |
+|---------|---------|---------|
+| `pair.js` | WebRTC peer pairing | Latest |
+| `redux` | State management | Existing |
+
+### pair.js Installation
+
+```bash
+npm install pair.js
+```
+
+### Browser Requirements
+
+- Modern browsers with WebRTC support
+- Chrome, Firefox, Safari, Edge (recent versions)
 
 ---
 
@@ -428,74 +636,69 @@ Stored in `localStorage` for persistence across page refreshes.
 
 - Message serialization/deserialization
 - Move validation logic
-- Session state transitions
-- Reconnection token handling
+- URL parameter parsing
+- Game code generation
 
 ### Integration Tests
 
-- Full game flow with mock WebSocket
+- Mock pair.js for connection testing
+- Full game flow simulation
 - Reconnection scenarios
-- Error handling paths
 
 ### End-to-End Tests
 
-Using Playwright:
-- Create session, join session, play complete game
-- Test disconnection and reconnection
-- Test rematch flow
+Using Playwright with two browser contexts:
 
----
-
-## Deployment Considerations
-
-### Server Hosting
-
-Options for the WebSocket server:
-- **Serverless**: Not ideal for WebSockets (cold starts, connection limits)
-- **Container**: Good balance of control and ease (e.g., Cloud Run, ECS)
-- **VPS**: Full control, manual scaling (e.g., DigitalOcean, Linode)
-
-### Scaling
-
-For initial launch:
-- Single server instance is sufficient
-- Sessions are self-contained (no cross-server state needed)
-
-For future scaling:
-- Sticky sessions route players to same server
-- Redis for cross-server session state if needed
-
-### Monitoring
-
-Track:
-- Active connections count
-- Active sessions count
-- Message throughput
-- Error rates
-- Latency percentiles
+```typescript
+test('two players can complete a game', async ({ browser }) => {
+  // Create two browser contexts
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  
+  const hostPage = await hostContext.newPage();
+  const guestPage = await guestContext.newPage();
+  
+  // Host creates game
+  await hostPage.goto('https://attax.example.com');
+  await hostPage.click('text=Create Online Game');
+  const gameCode = await hostPage.textContent('.game-code');
+  
+  // Guest joins via URL
+  await guestPage.goto(`https://attax.example.com/?game=${gameCode}`);
+  
+  // Verify both see the game board
+  await expect(hostPage.locator('.game-board')).toBeVisible();
+  await expect(guestPage.locator('.game-board')).toBeVisible();
+  
+  // Play some moves...
+});
+```
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Core Networking
+### Phase 1: pair.js Integration
 
-- [ ] WebSocket server setup
-- [ ] Basic message protocol implementation
-- [ ] Session creation and joining
-- [ ] NetworkManager client class
+- [ ] Install and configure pair.js
+- [ ] Implement PeerManager class
+- [ ] Create game code generation
+- [ ] Implement URL parameter handling
+- [ ] Basic connection establishment
 
 ### Phase 2: Game Synchronization
 
-- [ ] Server-side game state management
-- [ ] Move validation on server
-- [ ] State synchronization protocol
+- [ ] Define message protocol
+- [ ] Implement move transmission
+- [ ] Add move validation on receive
+- [ ] State sync mechanism
 - [ ] Redux network middleware
 
 ### Phase 3: UI/UX
 
 - [ ] Game mode selection screen
-- [ ] Online game lobby
+- [ ] Create game / waiting screen with shareable link
+- [ ] Join game screen
 - [ ] Connection status indicators
 - [ ] Turn indicators for online play
 
@@ -503,34 +706,34 @@ Track:
 
 - [ ] Reconnection handling
 - [ ] Error handling and recovery
-- [ ] Rate limiting
-- [ ] Session cleanup
+- [ ] State conflict resolution
+- [ ] Timeout handling
 
 ### Phase 5: Polish
 
 - [ ] Rematch functionality
-- [ ] Player name display
+- [ ] Copy link button
 - [ ] Improved error messages
 - [ ] Loading states and animations
+- [ ] Mobile-friendly sharing
 
 ---
 
-## API Reference
+## URL Parameter Reference
 
-### REST Endpoints (Optional)
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `game` | Game code to join | `?game=ABC123` |
 
-For session discovery and health checks:
+### URL Examples
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Server health check |
-| `/sessions/:code` | GET | Check if session exists |
+```
+# Join a specific game
+https://attax.example.com/?game=ABC123
 
-### WebSocket Endpoint
-
-| Endpoint | Description |
-|----------|-------------|
-| `wss://server/game` | Main game WebSocket connection |
+# Main menu (no parameters)
+https://attax.example.com/
+```
 
 ---
 
@@ -538,10 +741,10 @@ For session discovery and health checks:
 
 This design enables online two-person play through:
 
-1. **WebSocket communication** for real-time gameplay
-2. **Server-authoritative state** for consistency and security
-3. **Share codes** for easy session joining
-4. **Reconnection support** for handling network issues
+1. **WebRTC peer-to-peer** communication for low-latency gameplay
+2. **pair.js** for simplified WebRTC connection management
+3. **URL-encoded game codes** for easy one-click joining
+4. **Distributed state** with host authority for conflict resolution
 5. **Redux integration** maintaining existing architecture patterns
 
-The implementation is divided into phases, starting with core networking and progressing through game synchronization, UI changes, and robustness improvements. The design reuses existing game logic for move validation, ensuring consistency between local and online play.
+The implementation requires no dedicated game server, only leveraging pair.js's signaling infrastructure. Players can share game links directly, making it easy to invite opponents. The design reuses existing game logic for move validation, ensuring consistency between local and online play.
