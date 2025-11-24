@@ -2,16 +2,25 @@
 import type { AppStore } from './store';
 import { selectPiece, deselectPiece, makeMove } from './store/actions';
 import { GameRenderer } from './renderer';
+import { AnimationManager } from './animation';
+import { getMoveType, getConvertedPieces } from './game/moves';
 
 export class InputHandler {
   private store: AppStore;
   private renderer: GameRenderer;
   private canvas: HTMLCanvasElement;
+  private animationManager: AnimationManager;
 
-  constructor(canvas: HTMLCanvasElement, store: AppStore, renderer: GameRenderer) {
+  constructor(
+    canvas: HTMLCanvasElement, 
+    store: AppStore, 
+    renderer: GameRenderer,
+    animationManager: AnimationManager
+  ) {
     this.canvas = canvas;
     this.store = store;
     this.renderer = renderer;
+    this.animationManager = animationManager;
     this.setupEventListeners();
   }
 
@@ -37,6 +46,9 @@ export class InputHandler {
   }
 
   private processInput(clientX: number, clientY: number): void {
+    // Block input during animations
+    if (this.animationManager.isAnimating()) return;
+    
     const state = this.store.getState();
     
     // Don't process input if game is finished
@@ -55,7 +67,7 @@ export class InputHandler {
       );
       
       if (isValidMove) {
-        this.store.dispatch(makeMove(state.selectedPiece, position));
+        this.executeMove(state.selectedPiece, position);
       } else if (cell.type === 'piece' && cell.owner === state.currentPlayer) {
         // Clicked on another own piece - select it instead
         this.store.dispatch(selectPiece(position));
@@ -67,5 +79,37 @@ export class InputHandler {
       // Select this piece
       this.store.dispatch(selectPiece(position));
     }
+  }
+
+  private executeMove(from: { row: number; col: number }, to: { row: number; col: number }): void {
+    const state = this.store.getState();
+    const moveType = getMoveType(from, to);
+    const player = state.currentPlayer;
+    
+    // Calculate which pieces will be converted after the move
+    // We need to simulate the board state after the piece moves
+    const simulatedBoard = state.board.map(row => row.map(cell => ({ ...cell })));
+    simulatedBoard[to.row][to.col] = { type: 'piece', owner: player };
+    if (moveType === 'jump') {
+      simulatedBoard[from.row][from.col] = { type: 'empty' };
+    }
+    const convertedPositions = getConvertedPieces(simulatedBoard, to, player);
+    
+    // Start animation
+    this.animationManager.startMoveAnimation(
+      moveType,
+      from,
+      to,
+      player,
+      convertedPositions,
+      () => {
+        // onFrame callback - trigger render
+        this.renderer.render(state);
+      },
+      () => {
+        // onComplete callback - apply the actual move
+        this.store.dispatch(makeMove(from, to));
+      }
+    );
   }
 }
