@@ -33,29 +33,6 @@ Create an engaging, accessible, and visually appealing web-based version of Atax
 
 1. **Simplicity First**: Clean, intuitive interface that doesn't require a manual
 2. **Performance**: Smooth animations and responsive gameplay, even on mobile devices
-3. **Accessibility**: Keyboard navigation, screen reader support, and color-blind friendly palettes
-4. **Progressive Enhancement**: Core game works everywhere, enhanced features where supported
-5. **Open Source**: Community-driven development with transparent decision-making
-
-## 🤝 Contributing
-
-We welcome contributions from the community! Whether you're fixing bugs, adding features, improving documentation, or suggesting ideas, your input is valuable.
-
-### How to Contribute
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Development Guidelines
-
-- Write clean, readable code with appropriate comments
-- Follow existing code style and conventions
-- Add tests for new features
-- Update documentation as needed
-- Ensure all tests pass before submitting PR
 
 ## 📝 License
 
