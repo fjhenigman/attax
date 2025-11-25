@@ -1,5 +1,5 @@
 // Redux middleware for network/online play
-import type { Middleware, Dispatch } from 'redux';
+import type { Middleware, Dispatch, AnyAction } from 'redux';
 import type { CombinedState } from '../store';
 import type { GameAction, MakeMoveAction } from '../store/actions';
 import type { NetworkAction } from './actions';
@@ -25,27 +25,32 @@ import type { NetworkMessage } from './types';
 
 type CombinedAction = GameAction | NetworkAction;
 
+// Helper to dispatch with type safety
+function dispatchAction(dispatch: Dispatch<AnyAction>, action: CombinedAction): void {
+  dispatch(action as AnyAction);
+}
+
 /**
  * Middleware that handles network operations for online play
  */
 export const networkMiddleware: Middleware<
   Record<string, never>,
-  CombinedState,
-  Dispatch<CombinedAction>
-> = (store) => (next) => (action: CombinedAction) => {
+  CombinedState
+> = (store) => (next) => (action) => {
+  const typedAction = action as CombinedAction;
   const state = store.getState();
   const peerManager = getPeerManager();
 
-  switch (action.type) {
+  switch (typedAction.type) {
     case CREATE_GAME: {
       // First dispatch to update state to 'creating'
-      const result = next(action);
+      const result = next(typedAction);
 
       // Create the game and setup callbacks
       peerManager.createGame()
         .then((gameCode) => {
           const link = createShareableLink(gameCode);
-          store.dispatch(gameCreated(gameCode, link, 'red'));
+          dispatchAction(store.dispatch, gameCreated(gameCode, link, 'red'));
 
           // Setup connection handlers
           peerManager.onConnect(() => {
@@ -59,11 +64,11 @@ export const networkMiddleware: Middleware<
                 gameState: currentState.game
               }
             });
-            store.dispatch(peerConnected());
+            dispatchAction(store.dispatch, peerConnected());
           });
 
           peerManager.onDisconnect(() => {
-            store.dispatch(peerDisconnected());
+            dispatchAction(store.dispatch, peerDisconnected());
           });
 
           peerManager.onMessage((message: NetworkMessage) => {
@@ -71,21 +76,21 @@ export const networkMiddleware: Middleware<
           });
 
           peerManager.onError((err) => {
-            store.dispatch(networkError(err.message));
+            dispatchAction(store.dispatch, networkError(err.message));
           });
         })
         .catch((err) => {
-          store.dispatch(networkError(err.message || 'Failed to create game'));
+          dispatchAction(store.dispatch, networkError(err.message || 'Failed to create game'));
         });
 
       return result;
     }
 
     case JOIN_GAME: {
-      const { gameCode } = (action as { type: typeof JOIN_GAME; payload: { gameCode: string } }).payload;
+      const { gameCode } = (typedAction as { type: typeof JOIN_GAME; payload: { gameCode: string } }).payload;
       
       // Dispatch joining action
-      store.dispatch(joiningGame(gameCode));
+      dispatchAction(store.dispatch, joiningGame(gameCode));
 
       // Join the game
       peerManager.joinGame(gameCode)
@@ -96,7 +101,7 @@ export const networkMiddleware: Middleware<
           });
 
           peerManager.onDisconnect(() => {
-            store.dispatch(peerDisconnected());
+            dispatchAction(store.dispatch, peerDisconnected());
           });
 
           peerManager.onMessage((message: NetworkMessage) => {
@@ -104,14 +109,14 @@ export const networkMiddleware: Middleware<
           });
 
           peerManager.onError((err) => {
-            store.dispatch(networkError(err.message));
+            dispatchAction(store.dispatch, networkError(err.message));
           });
         })
         .catch((err) => {
-          store.dispatch(networkError(err.message || 'Failed to join game'));
+          dispatchAction(store.dispatch, networkError(err.message || 'Failed to join game'));
         });
 
-      return next(action);
+      return next(typedAction);
     }
 
     case MAKE_MOVE: {
@@ -121,10 +126,10 @@ export const networkMiddleware: Middleware<
       if (networkState.mode === 'online' && networkState.connectionStatus === 'connected') {
         // Only send if it's our turn
         if (state.game.currentPlayer === networkState.playerColor) {
-          const moveAction = action as MakeMoveAction;
+          const moveAction = typedAction as MakeMoveAction;
           
           // Apply locally first (optimistic update)
-          const result = next(action);
+          const result = next(typedAction);
           
           // Send to peer
           peerManager.send({
@@ -137,7 +142,7 @@ export const networkMiddleware: Middleware<
         }
       }
       
-      return next(action);
+      return next(typedAction);
     }
 
     case NEW_GAME: {
@@ -147,20 +152,20 @@ export const networkMiddleware: Middleware<
       if (networkState.mode === 'online') {
         resetPeerManager();
         // Will be handled by game reducer, but also reset network
-        const result = next(action);
+        const result = next(typedAction);
         return result;
       }
       
-      return next(action);
+      return next(typedAction);
     }
 
     case CANCEL_ONLINE: {
       resetPeerManager();
-      return next(action);
+      return next(typedAction);
     }
 
     default:
-      return next(action);
+      return next(typedAction);
   }
 };
 
@@ -179,8 +184,8 @@ function handleIncomingMessage(
       if (state.network.role === 'guest') {
         const payload = message.payload as { hostColor: 'red' | 'blue'; gameState: CombinedState['game'] };
         const guestColor = payload.hostColor === 'red' ? 'blue' : 'red';
-        store.dispatch(peerConnected(guestColor, payload.gameState));
-        store.dispatch(syncState(payload.gameState));
+        dispatchAction(store.dispatch, peerConnected(guestColor, payload.gameState));
+        dispatchAction(store.dispatch, syncState(payload.gameState));
       }
       break;
     }
@@ -194,19 +199,19 @@ function handleIncomingMessage(
       
       if (state.game.currentPlayer === opponentColor) {
         // Apply the move through our reducer
-        store.dispatch(receiveMove(payload.from, payload.to));
+        dispatchAction(store.dispatch, receiveMove(payload.from, payload.to));
       }
       break;
     }
 
     case 'SYNC_STATE': {
       const payload = message.payload as { gameState: CombinedState['game'] };
-      store.dispatch(syncState(payload.gameState));
+      dispatchAction(store.dispatch, syncState(payload.gameState));
       break;
     }
 
     case 'PLAYER_LEFT': {
-      store.dispatch(peerDisconnected());
+      dispatchAction(store.dispatch, peerDisconnected());
       break;
     }
 

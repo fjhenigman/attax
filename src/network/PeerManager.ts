@@ -1,6 +1,5 @@
 // PeerManager - handles WebRTC peer connections for online play
-// Uses simple-peer for WebRTC and a custom signaling mechanism
-import Peer from 'simple-peer';
+// Uses native WebRTC APIs with BroadcastChannel/localStorage for signaling
 import type { NetworkMessage, PeerRole, PeerConnectionCallbacks } from './types';
 
 // Generate a random game code (6 alphanumeric characters)
@@ -33,21 +32,29 @@ export function clearGameCodeFromUrl(): void {
   window.history.replaceState({}, '', url.toString());
 }
 
+// Signal data types
+interface SignalData {
+  type: 'offer' | 'answer' | 'candidate';
+  data: RTCSessionDescriptionInit | RTCIceCandidateInit;
+}
+
 /**
- * PeerManager handles WebRTC connections using simple-peer
+ * PeerManager handles WebRTC connections using native browser APIs
  * 
  * Signaling is done through BroadcastChannel (same browser) and
  * localStorage events (cross-tab). For production, a signaling
  * server would be required.
  */
 export class PeerManager {
-  private peer: Peer.Instance | null = null;
+  private peerConnection: RTCPeerConnection | null = null;
+  private dataChannel: RTCDataChannel | null = null;
   private role: PeerRole | null = null;
   private gameCode: string | null = null;
   private callbacks: Partial<PeerConnectionCallbacks> = {};
   private broadcastChannel: BroadcastChannel | null = null;
   private storageListener: ((event: StorageEvent) => void) | null = null;
   private connected = false;
+  private pendingCandidates: RTCIceCandidateInit[] = [];
 
   constructor() {
     // Clean up any stale signaling data
@@ -97,7 +104,7 @@ export class PeerManager {
     window.addEventListener('storage', this.storageListener);
   }
 
-  private sendSignalingData(signal: Peer.SignalData): void {
+  private sendSignalingData(signal: SignalData): void {
     if (!this.gameCode) return;
 
     const message = {
@@ -120,14 +127,98 @@ export class PeerManager {
     }));
   }
 
-  private handleSignalingMessage(signal: Peer.SignalData): void {
-    if (this.peer && !this.peer.destroyed) {
-      try {
-        this.peer.signal(signal);
-      } catch {
-        // Ignore signal errors for already connected peers
+  private async handleSignalingMessage(signal: SignalData): Promise<void> {
+    if (!this.peerConnection) return;
+
+    try {
+      if (signal.type === 'offer') {
+        await this.peerConnection.setRemoteDescription(signal.data as RTCSessionDescriptionInit);
+        const answer = await this.peerConnection.createAnswer();
+        await this.peerConnection.setLocalDescription(answer);
+        this.sendSignalingData({ type: 'answer', data: answer });
+        
+        // Apply pending ICE candidates
+        for (const candidate of this.pendingCandidates) {
+          await this.peerConnection.addIceCandidate(candidate);
+        }
+        this.pendingCandidates = [];
+      } else if (signal.type === 'answer') {
+        await this.peerConnection.setRemoteDescription(signal.data as RTCSessionDescriptionInit);
+        
+        // Apply pending ICE candidates
+        for (const candidate of this.pendingCandidates) {
+          await this.peerConnection.addIceCandidate(candidate);
+        }
+        this.pendingCandidates = [];
+      } else if (signal.type === 'candidate') {
+        if (this.peerConnection.remoteDescription) {
+          await this.peerConnection.addIceCandidate(signal.data as RTCIceCandidateInit);
+        } else {
+          // Queue the candidate until remote description is set
+          this.pendingCandidates.push(signal.data as RTCIceCandidateInit);
+        }
       }
+    } catch (err) {
+      console.error('Error handling signaling message:', err);
     }
+  }
+
+  private createPeerConnection(): void {
+    this.peerConnection = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    });
+
+    this.peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.sendSignalingData({ type: 'candidate', data: event.candidate.toJSON() });
+      }
+    };
+
+    this.peerConnection.onconnectionstatechange = () => {
+      if (this.peerConnection?.connectionState === 'connected') {
+        this.connected = true;
+        this.callbacks.onConnect?.();
+      } else if (this.peerConnection?.connectionState === 'disconnected' ||
+                 this.peerConnection?.connectionState === 'failed') {
+        this.connected = false;
+        this.callbacks.onDisconnect?.();
+      }
+    };
+
+    this.peerConnection.ondatachannel = (event) => {
+      this.dataChannel = event.channel;
+      this.setupDataChannel();
+    };
+  }
+
+  private setupDataChannel(): void {
+    if (!this.dataChannel) return;
+
+    this.dataChannel.onopen = () => {
+      this.connected = true;
+      this.callbacks.onConnect?.();
+    };
+
+    this.dataChannel.onclose = () => {
+      this.connected = false;
+      this.callbacks.onDisconnect?.();
+    };
+
+    this.dataChannel.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data) as NetworkMessage;
+        this.callbacks.onMessage?.(message);
+      } catch {
+        console.error('Failed to parse message');
+      }
+    };
+
+    this.dataChannel.onerror = (event) => {
+      this.callbacks.onError?.(new Error('Data channel error: ' + event));
+    };
   }
 
   /**
@@ -140,20 +231,18 @@ export class PeerManager {
     this.gameCode = gameCode;
     
     this.setupSignaling(gameCode);
+    this.createPeerConnection();
 
-    // Create peer as initiator
-    this.peer = new Peer({
-      initiator: true,
-      trickle: true,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-      }
+    // Host creates the data channel
+    this.dataChannel = this.peerConnection!.createDataChannel('game', {
+      ordered: true
     });
+    this.setupDataChannel();
 
-    this.setupPeerEvents();
+    // Create and send offer
+    const offer = await this.peerConnection!.createOffer();
+    await this.peerConnection!.setLocalDescription(offer);
+    this.sendSignalingData({ type: 'offer', data: offer });
 
     return gameCode;
   }
@@ -166,20 +255,7 @@ export class PeerManager {
     this.gameCode = gameCode.toUpperCase();
     
     this.setupSignaling(this.gameCode);
-
-    // Create peer as non-initiator
-    this.peer = new Peer({
-      initiator: false,
-      trickle: true,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-      }
-    });
-
-    this.setupPeerEvents();
+    this.createPeerConnection();
 
     // Check for existing host signal in localStorage
     const existingSignal = localStorage.getItem(`attax_signal_${this.gameCode}`);
@@ -187,7 +263,7 @@ export class PeerManager {
       try {
         const data = JSON.parse(existingSignal);
         if (data.from === 'host' && data.signal) {
-          this.handleSignalingMessage(data.signal);
+          await this.handleSignalingMessage(data.signal);
         }
       } catch {
         // Ignore parse errors
@@ -195,43 +271,12 @@ export class PeerManager {
     }
   }
 
-  private setupPeerEvents(): void {
-    if (!this.peer) return;
-
-    this.peer.on('signal', (signal) => {
-      this.sendSignalingData(signal);
-    });
-
-    this.peer.on('connect', () => {
-      this.connected = true;
-      this.callbacks.onConnect?.();
-    });
-
-    this.peer.on('data', (data) => {
-      try {
-        const message = JSON.parse(data.toString()) as NetworkMessage;
-        this.callbacks.onMessage?.(message);
-      } catch {
-        console.error('Failed to parse message');
-      }
-    });
-
-    this.peer.on('close', () => {
-      this.connected = false;
-      this.callbacks.onDisconnect?.();
-    });
-
-    this.peer.on('error', (err) => {
-      this.callbacks.onError?.(err);
-    });
-  }
-
   /**
    * Send a message to the connected peer
    */
   send(message: NetworkMessage): void {
-    if (this.peer && this.connected) {
-      this.peer.send(JSON.stringify(message));
+    if (this.dataChannel && this.dataChannel.readyState === 'open') {
+      this.dataChannel.send(JSON.stringify(message));
     }
   }
 
@@ -248,9 +293,14 @@ export class PeerManager {
       });
     }
 
-    if (this.peer) {
-      this.peer.destroy();
-      this.peer = null;
+    if (this.dataChannel) {
+      this.dataChannel.close();
+      this.dataChannel = null;
+    }
+
+    if (this.peerConnection) {
+      this.peerConnection.close();
+      this.peerConnection = null;
     }
 
     if (this.broadcastChannel) {
@@ -271,6 +321,7 @@ export class PeerManager {
     this.connected = false;
     this.role = null;
     this.gameCode = null;
+    this.pendingCandidates = [];
   }
 
   /**

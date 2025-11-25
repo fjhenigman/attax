@@ -1,5 +1,4 @@
 // Redux actions for network/online play
-import type { NetworkState, NetworkMessage } from './types';
 import type { Player, GameState } from '../types';
 
 // Action types

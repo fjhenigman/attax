@@ -11,7 +11,6 @@ import {
 } from './network';
 import { GameRenderer } from './renderer';
 import { InputHandler } from './input';
-import type { Player } from './types';
 
 class AttaxGame {
   private store;
@@ -21,7 +20,6 @@ class AttaxGame {
   private header: HTMLElement | null = null;
   private canvasContainer: HTMLElement | null = null;
   private menuOverlay: HTMLElement | null = null;
-  private inputHandler: InputHandler | null = null;
 
   constructor() {
     // Create canvas
@@ -102,10 +100,6 @@ class AttaxGame {
 
     // Show/hide menu overlay based on state
     if (this.menuOverlay) {
-      const showMenu = state.network.mode === 'local' && 
-                       state.network.connectionStatus === 'disconnected' &&
-                       !state.network.gameCode;
-      
       // Only show menu on initial load or when explicitly showing mode selection
       // For now, always show the game and use the menu button
     }
@@ -619,7 +613,7 @@ class AttaxGame {
     this.renderer.resize(rect.width, rect.height);
     
     // Setup input handler with store that includes network state awareness
-    this.inputHandler = new InputHandler(this.canvas, this.store, this.renderer);
+    new InputHandler(this.canvas, this.store, this.renderer);
     
     // Initial render
     this.renderer.render(this.store.getState().game);

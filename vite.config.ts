@@ -18,4 +18,8 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
   },
   base: getBasePath(),
+  define: {
+    // Polyfill global for browser compatibility (needed by simple-peer)
+    global: 'globalThis',
+  },
 });
