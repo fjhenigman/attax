@@ -10,6 +10,7 @@ class AttaxGame {
   private renderer: GameRenderer;
   private canvas: HTMLCanvasElement;
   private animationManager: AnimationManager;
+  private canvasContainer: HTMLDivElement | null = null;
 
   constructor() {
     // Create canvas
@@ -39,9 +40,8 @@ class AttaxGame {
   }
 
   private handleResize(): void {
-    const container = document.getElementById('app');
-    if (container) {
-      this.renderer.resize(container.clientWidth, container.clientHeight);
+    if (this.canvasContainer) {
+      this.renderer.resize(this.canvasContainer.clientWidth, this.canvasContainer.clientHeight);
       this.renderer.render(this.store.getState());
     }
   }
@@ -91,21 +91,21 @@ class AttaxGame {
     header.appendChild(newGameBtn);
     
     // Create canvas container
-    const canvasContainer = document.createElement('div');
-    canvasContainer.style.flex = '1';
-    canvasContainer.style.width = '100%';
-    canvasContainer.style.display = 'flex';
-    canvasContainer.style.justifyContent = 'center';
-    canvasContainer.style.alignItems = 'center';
-    canvasContainer.style.overflow = 'hidden';
+    this.canvasContainer = document.createElement('div');
+    this.canvasContainer.style.flex = '1';
+    this.canvasContainer.style.width = '100%';
+    this.canvasContainer.style.display = 'flex';
+    this.canvasContainer.style.justifyContent = 'center';
+    this.canvasContainer.style.alignItems = 'center';
+    this.canvasContainer.style.overflow = 'hidden';
     
-    canvasContainer.appendChild(this.canvas);
+    this.canvasContainer.appendChild(this.canvas);
     
     container.appendChild(header);
-    container.appendChild(canvasContainer);
+    container.appendChild(this.canvasContainer);
     
     // Set initial canvas size
-    const rect = canvasContainer.getBoundingClientRect();
+    const rect = this.canvasContainer.getBoundingClientRect();
     this.renderer.resize(rect.width, rect.height);
     
     // Initial render
