@@ -1,5 +1,16 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Determine base path to match vite.config.ts logic
+const getBasePath = () => {
+  if (process.env.VITE_BASE_PATH) {
+    return process.env.VITE_BASE_PATH;
+  }
+  return process.env.CI ? '/attax/' : '/';
+};
+
+const basePath = getBasePath();
+const baseURL = `http://localhost:4173${basePath === '/' ? '' : basePath}`;
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -8,7 +19,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:4173',
+    baseURL,
     trace: 'on-first-retry',
   },
   projects: [
@@ -19,7 +30,7 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run preview',
-    url: 'http://localhost:4173',
+    url: baseURL,
     reuseExistingServer: !process.env.CI,
   },
 });
