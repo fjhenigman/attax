@@ -3,12 +3,12 @@ import { test, expect } from '@playwright/test';
 /**
  * Test 002: Clone Move
  * 
- * This test validates clone move mechanics - when a piece is duplicated to an adjacent cell.
- * A clone move occurs when a piece moves 1 cell in any direction (including diagonals).
+ * This test validates clone move mechanics - when a piece is duplicated to a cell within distance 1.
+ * A clone move occurs when a piece moves to any cell within distance 1 in any direction (including diagonals).
  * 
  * Test scenario:
  * 1. Red selects piece at (0,0) - top-left corner
- * 2. Valid moves are highlighted (adjacent empty cells)
+ * 2. Valid moves are highlighted (cells within distance 1)
  * 3. Red clicks on (1,0) to clone
  * 4. Piece is duplicated - original stays, new piece appears at destination
  * 5. Score updates: Red 3, Blue 2
@@ -20,7 +20,7 @@ test.describe('002 - Clone Move', () => {
     await page.waitForTimeout(100);
   });
 
-  test('clone move duplicates piece to adjacent cell', async ({ page }) => {
+  test('clone move duplicates piece to cell within distance 1', async ({ page }) => {
     const canvas = page.locator('#game-canvas');
     const box = await canvas.boundingBox();
     expect(box).not.toBeNull();

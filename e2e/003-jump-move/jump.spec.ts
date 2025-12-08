@@ -3,14 +3,14 @@ import { test, expect } from '@playwright/test';
 /**
  * Test 003: Jump Move
  * 
- * This test validates jump move mechanics - when a piece moves 2 cells away.
- * A jump move occurs when a piece moves 2 cells in any direction (including diagonals).
+ * This test validates jump move mechanics - when a piece moves to a cell within distance 2.
+ * A jump move occurs when a piece moves to any cell at distance 2 in any direction (including diagonals).
  * Unlike clone, the original piece is removed (piece "jumps" to new location).
  * 
  * Test scenario:
  * 1. Red selects piece at (0,0) - top-left corner
- * 2. Valid moves are highlighted (cells within 2 squares)
- * 3. Red clicks on (2,0) to jump
+ * 2. Valid moves are highlighted (cells within distance 2)
+ * 3. Red clicks on (2,0) to jump (distance 2)
  * 4. Piece moves - original disappears, new piece appears at destination
  * 5. Score remains: Red 2, Blue 2 (no conversion, just relocation)
  */
@@ -21,7 +21,7 @@ test.describe('003 - Jump Move', () => {
     await page.waitForTimeout(100);
   });
 
-  test('jump move relocates piece 2 cells away', async ({ page }) => {
+  test('jump move relocates piece to cell within distance 2', async ({ page }) => {
     const canvas = page.locator('#game-canvas');
     const box = await canvas.boundingBox();
     expect(box).not.toBeNull();
