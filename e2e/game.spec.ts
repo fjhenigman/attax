@@ -3,6 +3,10 @@ import { test, expect } from '@playwright/test';
 test.describe('Attax Game', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    // Click "LOCAL PLAY" to enter the game
+    await page.getByRole('button', { name: /LOCAL PLAY/i }).click();
+    // Wait for the canvas to be visible
+    await page.locator('#game-canvas').waitFor({ state: 'visible' });
   });
 
   test.describe('game board clipping at various window sizes', () => {
