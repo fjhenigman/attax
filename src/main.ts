@@ -10,6 +10,7 @@ class AttaxGame {
   private renderer: GameRenderer;
   private canvas: HTMLCanvasElement;
   private animationManager: AnimationManager;
+  // Canvas container is set during mount() and used for resize handling
   private canvasContainer: HTMLDivElement | null = null;
 
   constructor() {
